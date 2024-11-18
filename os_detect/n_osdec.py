@@ -6,28 +6,36 @@ def scan_network(network_range):
     # Initialize the PortScanner object
     nm = nmap.PortScanner()
 
-    # Scan the provided network range for devices
+    # Scan the provided network range for devices with OS detection
     print(f"Scanning network: {network_range}")
-    nm.scan(hosts=network_range, arguments='-O')  # '-O' flag enables OS detection
+    
+    try:
+        nm.scan(hosts=network_range, arguments='-O')  # '-O' flag enables OS detection
+    except Exception as e:
+        print(f"Error occurred during scan: {e}")
+        return []
 
     devices = []
     
     for host in nm.all_hosts():
-        if 'hostnames' in nm[host]:
-            host_info = {
-                'ip': host,
-                'hostnames': nm[host].hostname(),
-                'os': nm[host].get('osmatch', 'Unknown')
-            }
-            devices.append(host_info)
+        host_info = {
+            'ip': host,
+            'hostnames': nm[host].hostname() if 'hostnames' in nm[host] else 'N/A',
+            'os': nm[host].get('osmatch', 'Unknown') if 'osmatch' in nm[host] else 'OS detection failed'
+        }
+        devices.append(host_info)
     
     return devices
 
 def display_device_info(devices):
+    if not devices:
+        print("No devices found or scan failed.")
+        return
+
     print("\nDetected Devices and Their Operating Systems:")
     for device in devices:
         ip = device['ip']
-        hostnames = device['hostnames'] if device['hostnames'] else 'N/A'
+        hostnames = device['hostnames'] if device['hostnames'] != 'N/A' else 'N/A'
         os = device['os'][0] if device['os'] != 'Unknown' else 'OS detection failed'
         
         print(f"IP: {ip}")

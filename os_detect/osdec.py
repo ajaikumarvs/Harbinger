@@ -1,66 +1,80 @@
-import subprocess
+import asyncio
+import aiohttp
 import socket
-import os
-from concurrent.futures import ThreadPoolExecutor
+from aiohttp import ClientSession
 
-# Function to perform a ping sweep to find live hosts on a network
-def ping_host(ip):
+# Function to perform an asynchronous ping sweep
+async def ping_host(session: ClientSession, ip: str):
     """
-    Perform a ping to check if the host is online
+    Asynchronously ping a host to check if it is online using an ICMP echo request.
     """
+    url = f'http://{ip}'
     try:
-        # For Linux/Mac
-        # response = subprocess.run(['ping', '-c', '1', ip], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
-        # For Windows
-        response = subprocess.run(['ping', '-n', '1', ip], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-        if response.returncode == 0:
-            return ip
-    except Exception as e:
+        async with session.get(url, timeout=1) as response:
+            if response.status == 200:
+                print(f"[LIVE] Host {ip} is online")
+                return ip
+    except:
         return None
 
-# Function to check open ports and try to grab a banner to determine the OS
-def grab_banner(ip, port):
+# Function to perform asynchronous port scanning on live hosts
+async def grab_banner(ip: str, port: int):
     """
     Attempt to grab a banner from a service on a specific port to identify the OS.
     """
     try:
-        # Timeout of 2 seconds
-        s = socket.socket()
-        s.settimeout(2)
-        s.connect((ip, port))
-        s.send(b'HEAD / HTTP/1.0\r\n\r\n')
-        banner = s.recv(1024).decode('utf-8', errors='ignore')
-        s.close()
+        # Use asyncio.wait_for() to enforce a timeout
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(ip, port), timeout=2
+        )
+        
+        # Try sending a simple request and read the banner
+        writer.write(b'HEAD / HTTP/1.0\r\n\r\n')  # Try sending a HEAD request
+        await writer.drain()
+        
+        banner = await reader.read(1024)
+        banner = banner.decode('utf-8', errors='ignore')
+        
+        # Close the connection after reading
+        writer.close()
+        await writer.wait_closed()
+
+        if not banner:
+            return None
+        
         return banner
-    except (socket.timeout, socket.error):
+
+    except (asyncio.TimeoutError, ConnectionRefusedError, ConnectionResetError) as e:
+        # Catch connection errors and return None when failed
+        print(f"Error connecting to {ip}:{port} - {e}")
         return None
 
-# Scan a range of IPs for live hosts
-def scan_network(ip_range):
+# Asynchronous function to scan for live hosts in a range
+async def scan_network(ip_range: str):
     live_hosts = []
-    # Loop through all possible IP addresses in the range
-    for i in range(1, 255):
-        ip = f"{ip_range}.{i}"
-        result = ping_host(ip)
-        if result:
-            live_hosts.append(ip)
-            print(f"Host {ip} is online")
-    return live_hosts
+    tasks = []
+    async with aiohttp.ClientSession() as session:
+        for i in range(1, 255):
+            ip = f"{ip_range}.{i}"
+            tasks.append(ping_host(session, ip))
+        live_hosts = await asyncio.gather(*tasks)
+    return [ip for ip in live_hosts if ip]
 
-# Scan common ports to identify the OS by banner grabbing
-def identify_os(ip):
+# Function to perform the full scan of the network and identify OS
+async def identify_os(ip: str):
     banners = {}
-    common_ports = [80, 443, 21, 22, 23, 25, 110, 139, 445]  # Common ports (HTTP, FTP, SSH, etc.)
-
-    for port in common_ports:
-        banner = grab_banner(ip, port)
-        if banner:
-            banners[port] = banner
-            print(f"Banner from {ip}:{port} - {banner}")
+    common_ports = [80, 443, 22, 21]  # Example ports: HTTP, HTTPS, SSH, FTP
     
-    # Simple checks based on banners (could be expanded with more complex logic)
+    print(f"Identifying OS for {ip}...")
+    tasks = [grab_banner(ip, port) for port in common_ports]
+    results = await asyncio.gather(*tasks)
+    
+    for port, banner in zip(common_ports, results):
+        if banner:
+            print(f"[BANNER] {ip}:{port} - {banner}")
+            banners[port] = banner
+
+    # Simple checks based on banners (this can be expanded)
     if any("Windows" in banner for banner in banners.values()):
         return "Windows"
     elif any("Linux" in banner for banner in banners.values()):
@@ -71,29 +85,21 @@ def identify_os(ip):
         return "Linux (Nginx Web Server)"
     return "Unknown OS"
 
-# Function to scan the network and try to detect the OS
-def scan_and_identify_os(network_range):
-    live_hosts = scan_network(network_range)
+# Main entry point to perform the scan and identify OS
+async def scan_and_identify_os(network_range: str):
+    live_hosts = await scan_network(network_range)
     os_info = {}
-    
-    # Use ThreadPoolExecutor to scan multiple hosts in parallel
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        results = executor.map(identify_os, live_hosts)
-    
-    for ip, os in zip(live_hosts, results):
+    tasks = [identify_os(ip) for ip in live_hosts]
+    os_results = await asyncio.gather(*tasks)
+
+    for ip, os in zip(live_hosts, os_results):
         os_info[ip] = os
-        print(f"IP: {ip}, OS: {os}")
-    
+        print(f"[RESULT] IP: {ip}, OS: {os}")
     return os_info
 
 if __name__ == "__main__":
     # Define the network range (e.g., 192.168.1.0/24)
     network_range = "192.168.1"  # Last octet will range from 1 to 254
 
-    # Scan the network and identify the OS of each device
-    os_info = scan_and_identify_os(network_range)
-
-    # Display the results
-    print("\nFinal OS Information:")
-    for ip, os in os_info.items():
-        print(f"{ip}: {os}")
+    # Perform the scan and identify the OS of each device
+    asyncio.run(scan_and_identify_os(network_range))
