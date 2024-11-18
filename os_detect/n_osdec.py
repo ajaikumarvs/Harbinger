@@ -1,5 +1,3 @@
-#OSDEC using nmap
-
 import nmap
 
 def scan_network(network_range):
@@ -20,12 +18,21 @@ def scan_network(network_range):
     for host in nm.all_hosts():
         host_info = {
             'ip': host,
-            'hostnames': nm[host].hostname() if 'hostnames' in nm[host] else 'N/A',
-            'os': nm[host].get('osmatch', 'Unknown') if 'osmatch' in nm[host] else 'OS detection failed'
+            'hostnames': nm[host].hostname() if nm[host].hostname() else 'N/A',
+            'os': extract_os_info(nm[host])
         }
         devices.append(host_info)
     
     return devices
+
+def extract_os_info(host_data):
+    # Try to extract the most likely OS match
+    os_info = host_data.get('osmatch', [])
+    if os_info:
+        # Return the most probable OS
+        return os_info[0]['name'] if isinstance(os_info[0], dict) else 'Unknown OS'
+    else:
+        return 'OS detection failed'
 
 def display_device_info(devices):
     if not devices:
@@ -35,9 +42,9 @@ def display_device_info(devices):
     print("\nDetected Devices and Their Operating Systems:")
     for device in devices:
         ip = device['ip']
-        hostnames = device['hostnames'] if device['hostnames'] != 'N/A' else 'N/A'
-        os = device['os'][0] if device['os'] != 'Unknown' else 'OS detection failed'
-        
+        hostnames = device['hostnames']
+        os = device['os']
+
         print(f"IP: {ip}")
         print(f"Hostnames: {hostnames}")
         print(f"Operating System: {os}")
