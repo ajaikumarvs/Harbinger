@@ -73,7 +73,30 @@ def print_consolidated_results(open_ports):
     else:
         print("No open ports found.")
 
-if __name__ == "__main__":
+# Function to save the results to a file
+def save_results_to_file(target_host, start_port, end_port, timeout, open_ports, filename="scan_results.txt"):
+    with open(filename, "a") as file:
+        file.write(f"\n--- Scan Results for {target_host} ---\n")
+        file.write(f"Ports Scanned: {start_port}-{end_port}\n")
+        file.write(f"Timeout: {timeout}s\n")
+        if open_ports:
+            file.write("Open Ports:\n")
+            for port, service in sorted(open_ports):
+                file.write(f"Port {port}: {service}\n")
+        else:
+            file.write("No open ports found.\n")
+        file.write("-" * 40 + "\n")
+    print(f"Results saved to {filename}")
+
+# Main menu for the program
+def display_menu():
+    print("\n--- Port Scanner Menu ---")
+    print("1. Start a new scan")
+    print("2. Redo the last scan")
+    print("3. Exit")
+    return input("Choose an option: ")
+
+def run_port_scan():
     # Input host and ports to scan
     target_host = input("Enter the target host (IP or domain): ")
     start_port = int(input("Enter the start port: "))
@@ -98,3 +121,38 @@ if __name__ == "__main__":
     # Output the time it took to scan
     elapsed_time = time.time() - start_time
     print(f"\nScan completed in {elapsed_time:.2f} seconds.")
+
+    # Save the results to a file
+    save_results = input("Would you like to save the results to a file? (y/n): ").lower()
+    if save_results == 'y':
+        save_results_to_file(target_host, start_port, end_port, timeout, open_ports)
+
+    return target_host, start_port, end_port, timeout, open_ports  # Return values for redos
+
+def main():
+    last_scan = None
+
+    while True:
+        choice = display_menu()
+
+        if choice == '1':
+            # Start a new scan
+            last_scan = run_port_scan()
+        elif choice == '2' and last_scan:
+            # Redo the last scan
+            print("\nRedoing the last scan...\n")
+            target_host, start_port, end_port, timeout, open_ports = last_scan
+            open_ports = scan_ports(target_host, range(start_port, end_port + 1), timeout, 50)
+            print_consolidated_results(open_ports)
+            save_results = input("Would you like to save the results to a file? (y/n): ").lower()
+            if save_results == 'y':
+                save_results_to_file(target_host, start_port, end_port, timeout, open_ports)
+        elif choice == '3':
+            # Exit the program
+            print("Exiting program...")
+            break
+        else:
+            print("Invalid choice or no previous scan to redo. Please try again.")
+
+if __name__ == "__main__":
+    main()

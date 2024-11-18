@@ -1,0 +1,6 @@
+
+--- Scan Results for itsecgames.com ---
+Ports Scanned: 1-10000
+Timeout: 1.0s
+No open ports found.
+----------------------------------------
