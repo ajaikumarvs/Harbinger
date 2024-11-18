@@ -2,26 +2,49 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define INITIAL_BUFFER_SIZE 1024
+
 // Function to run a shell command and return the output
 char* run_command(const char *command) {
     FILE *fp;
-    char *result = malloc(1024);  // Allocate memory for the result
+    size_t buffer_size = INITIAL_BUFFER_SIZE;
+    size_t len = 0;
+    char *result = malloc(buffer_size);  // Allocate memory for the result
     char temp[128];
+
     if (!result) {
         fprintf(stderr, "Memory allocation failed\n");
         return NULL;
     }
 
+    result[0] = '\0';  // Initialize the result buffer to an empty string
+
     fp = popen(command, "r");
     if (fp == NULL) {
-        fprintf(stderr, "Failed to run command\n");
+        perror("Failed to execute nmap command");
         free(result);
         return NULL;
     }
 
     // Read command output
     while (fgets(temp, sizeof(temp), fp) != NULL) {
+        size_t temp_len = strlen(temp);
+
+        // If there's not enough space in the buffer, resize it
+        if (len + temp_len >= buffer_size) {
+            buffer_size *= 2;  // Double the buffer size
+            char *new_result = realloc(result, buffer_size);
+            if (new_result == NULL) {
+                fprintf(stderr, "Memory reallocation failed\n");
+                fclose(fp);
+                free(result);
+                return NULL;
+            }
+            result = new_result;  // Point to the new memory
+        }
+
         strcat(result, temp);
+        len += temp_len;
     }
 
     fclose(fp);
