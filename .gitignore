@@ -162,5 +162,5 @@ cython_debug/
 #.idea/
 
 #Ignore AI Models
-ai/model/whiterabbit-v
+ai/model
 playground/vuln-ai/model
