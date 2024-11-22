@@ -1,0 +1,26 @@
+#!/bin/sh
+
+# Set the maximum allowed file size (100MB)
+MAX_SIZE=104857600  # 100MB in bytes
+
+# Define the log file to track rejected files
+LOG_FILE="./rejected_files.txt"
+
+# Initialize or clear the log file before each commit
+> "$LOG_FILE"
+
+# Get the list of files being staged
+for file in $(git diff --cached --name-only); do
+    # Get the file size
+    FILE_SIZE=$(stat --format=%s "$file")
+
+    # Check if the file size exceeds the limit
+    if [ "$FILE_SIZE" -gt "$MAX_SIZE" ]; then
+        # Log the rejected file to the log file
+        echo "File too big: $file ($FILE_SIZE bytes)" >> "$LOG_FILE"
+        echo "Error: The file '$file' is too large ($FILE_SIZE bytes). Max allowed size is 100MB."
+        exit 1
+    fi
+done
+
+exit 0
