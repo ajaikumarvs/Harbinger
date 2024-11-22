@@ -163,3 +163,4 @@ cython_debug/
 
 #Ignore AI Models
 ai/model
+playground/vuln-ai/model
