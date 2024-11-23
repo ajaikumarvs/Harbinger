@@ -82,28 +82,46 @@ def load_lightweight_model():
         return None, None
 
 def load_primary_model(model_path):
-    """Load Llama model with optimized resource usage."""
+    """Load Llama model with optimized resource usage from a .safetensors file."""
     cpu_cores, available_memory = get_system_resources()
-    
-    n_ctx = min(512, max(256, available_memory // 16))
-    n_batch = max(8, min(32, available_memory // 512))
-    
+
     try:
-        print("[INFO] Initializing the AI model (WhiteRabbit)...")
-        with suppress_stdout_stderr():
-            llm = Llama(
-                model_path=model_path,
-                n_threads=cpu_cores,
-                n_ctx=n_ctx,
-                n_batch=n_batch,
-                use_mlock=False,
-                use_mmap=True,
-            )
-        print("[INFO] WhiteRabbit model loaded successfully.")
-        return llm
+        print("[INFO] Initializing the AI model (WhiteRabbitNeo)...")
+        
+        # Check if the model is in .safetensors format
+        if model_path.endswith(".safetensors"):
+            print("[INFO] Detected .safetensors format. Loading with Transformers...")
+            tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+            model = AutoModelForCausalLM.from_pretrained(
+                model_path,
+                trust_remote_code=True,
+                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                device_map="auto" if torch.cuda.is_available() else None,
+                low_cpu_mem_usage=True
+            ).to(DEVICE)
+            print("[INFO] WhiteRabbitNeo model (.safetensors) loaded successfully.")
+            return model, tokenizer
+        else:
+            # Fallback to gguf loading logic if needed
+            print("[INFO] Detected non-.safetensors format. Attempting to load via llama.cpp...")
+            n_ctx = min(512, max(256, available_memory // 16))
+            n_batch = max(8, min(32, available_memory // 512))
+
+            with suppress_stdout_stderr():
+                llm = Llama(
+                    model_path=model_path,
+                    n_threads=cpu_cores,
+                    n_ctx=n_ctx,
+                    n_batch=n_batch,
+                    use_mlock=False,
+                    use_mmap=True,
+                )
+            print("[INFO] WhiteRabbitNeo model (.gguf) loaded successfully.")
+            return llm
     except Exception as e:
         print(f"[ERROR] Failed to load the primary model: {e}")
-        return None
+        return None, None
+
 
 def gpt_neo_guidance(model, tokenizer, prompt):
     """Generate response with optimized memory usage."""
@@ -296,23 +314,28 @@ def main():
     except:
         pass
 
-    MODEL_PATH = "models/whiterabbitneo-q5.gguf"
+    MODEL_PATH = "models/WhiteRabbitNeo-2.5-Qwen-2.5-Coder-7B-IQ2_M.gguf"  # General path (can point to .safetensors or other format)
     llm = None
     gpt_neo_model, gpt_neo_tokenizer = None, None
 
     if os.path.exists(MODEL_PATH):
-        llm = load_primary_model(MODEL_PATH)
+        # Updated to handle both model and tokenizer
+        model_or_llm = load_primary_model(MODEL_PATH)
+        if isinstance(model_or_llm, tuple):
+            gpt_neo_model, gpt_neo_tokenizer = model_or_llm
+        else:
+            llm = model_or_llm
     else:
         print(colored("[WARNING] WhiteRabbit model not found. Falling back to GPT-Neo...", "yellow"))
 
-    if not llm:
+    if not llm and not gpt_neo_model:
         gpt_neo_model, gpt_neo_tokenizer = load_lightweight_model()
 
     print(colored("\nWelcome to VulnX-ai", "blue", attrs=["bold"]))
     print(colored("Running in resource-efficient mode\n", "cyan"))
 
     try:
-        intro_prompt = "Just tell the user the number of web exploits that you recognize, as 'Vulnerabilities Recognized' : followed by the number."
+        intro_prompt = "Tell the user hi"
         intro = ai_guidance(intro_prompt, llm, gpt_neo_model, gpt_neo_tokenizer)
         print(colored(intro.strip(), "green"))
 
@@ -332,6 +355,7 @@ def main():
         if llm:
             del llm
         clear_memory()
+
 
 if __name__ == "__main__":
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
