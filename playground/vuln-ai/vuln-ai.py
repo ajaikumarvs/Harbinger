@@ -62,7 +62,7 @@ def scan_website(url):
 
 # Main workflow
 def main():
-    MODEL_PATH = "model/whiterabbitneo.gguf"
+    MODEL_PATH = "models/whiterabbitneo-q3.gguf"
     if not os.path.exists(MODEL_PATH):
         print("Model file not found! Ensure it's located in the 'models' folder.")
         sys.exit(1)
