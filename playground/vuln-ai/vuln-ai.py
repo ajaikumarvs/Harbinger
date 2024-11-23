@@ -320,7 +320,7 @@ def main():
         vulnerabilities = scan_website(url)
 
         if vulnerabilities:
-            remediation_prompt = f"Provide brief remediation steps for: {', '.join([v['name'] for v in vulnerabilities])}."
+            remediation_prompt = f"Provide single line remediation steps for: {', '.join([v['name'] for v in vulnerabilities])}."
             remediation_advice = ai_guidance(remediation_prompt, llm, gpt_neo_model, gpt_neo_tokenizer)
             print(colored("\nRemediation Guidance:", "green"))
             print(colored(remediation_advice.strip(), "green"))
