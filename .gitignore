@@ -162,6 +162,7 @@ cython_debug/
 #.idea/
 
 #Ignore AI Models
-/ai/models/*
-/playground/vuln-ai/models/*
+/ai/models/
+/playground/vuln-ai/models/
+
 
