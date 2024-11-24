@@ -20,6 +20,8 @@ import html
 from pathlib import Path
 from typing import Tuple
 
+
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -364,116 +366,47 @@ Scan Time: {self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}
             return self._get_static_remediation(vulnerability.name)
 
         try:
-            # Create a more structured and detailed prompt
             prompt = f"""
-            As a security expert, provide detailed remediation advice for the following vulnerability:
-            
-            Vulnerability Type: {vulnerability.name}
-            Description: {vulnerability.description}
+            Provide specific remediation advice for {vulnerability.name} vulnerability.
+            Context: {vulnerability.description}
             Impact: {vulnerability.impact}
-            Number of affected locations: {len(vulnerability.locations)}
-            Severity: {vulnerability.severity}
-
-            Please provide remediation advice in the following format:
-            General Guidance: <provide comprehensive guidance for fixing this vulnerability>
-            Steps:
-            1. <first step>
-            2. <second step>
-            3. <third step>
-            Priority: <High/Medium/Low based on severity and impact>
-            Difficulty: <High/Medium/Low based on implementation complexity>
-            Resources:
-            1. <first resource>
-            2. <second resource>
-            3. <third resource>
-            </response>
+            Locations affected: {len(vulnerability.locations)}
+            Format as:
+            General Guidance: <guidance>
+            Steps: <comma-separated steps>
+            Priority: <priority>
+            Difficulty: <difficulty>
+            Resources: <comma-separated resources>
             """
             
             response = self.ai_model.generate_response(prompt)
-            parsed_advice = self._parse_ai_response(response)
-            
-            # Validate and enhance the parsed advice
-            if not parsed_advice.general_guidance or len(parsed_advice.specific_steps) == 0:
-                fallback = self._get_static_remediation(vulnerability.name)
-                return RemediationAdvice(
-                    general_guidance=parsed_advice.general_guidance or fallback.general_guidance,
-                    specific_steps=parsed_advice.specific_steps or fallback.specific_steps,
-                    priority=parsed_advice.priority or vulnerability.severity,
-                    difficulty=parsed_advice.difficulty or "Medium",
-                    resources=parsed_advice.resources or fallback.resources
-                )
-            
-            return parsed_advice
-            
+            return self._parse_ai_response(response)
         except Exception as e:
             logger.error(f"Error generating AI remediation: {str(e)}")
             return self._get_static_remediation(vulnerability.name)
 
     def _parse_ai_response(self, response: str) -> RemediationAdvice:
-        """Parse AI response into structured remediation advice with improved parsing."""
+        """Parse AI response into structured remediation advice."""
         try:
-            # Initialize default values
+            lines = response.split('\n')
             guidance = ""
             steps = []
             priority = "Medium"
             difficulty = "Medium"
             resources = []
-            
-            # Split response into sections
-            sections = response.lower().split('\n')
-            current_section = None
-            
-            for line in sections:
-                line = line.strip()
-                if not line:
-                    continue
-                    
-                # Detect section headers
-                if "general guidance:" in line:
-                    current_section = "guidance"
-                    guidance = line.split(":", 1)[1].strip() if ":" in line else ""
-                elif "steps:" in line:
-                    current_section = "steps"
-                elif "priority:" in line:
-                    current_section = None
-                    priority = line.split(":", 1)[1].strip() if ":" in line else "Medium"
-                elif "difficulty:" in line:
-                    current_section = None
-                    difficulty = line.split(":", 1)[1].strip() if ":" in line else "Medium"
-                elif "resources:" in line:
-                    current_section = "resources"
-                elif current_section == "steps" and (line.startswith(("-", "•", "*", "1.", "2.", "3.")) or line[0].isdigit()):
-                    # Clean up the step text
-                    step = re.sub(r'^[-•*\d.]\s*', '', line).strip()
-                    if step:
-                        steps.append(step)
-                elif current_section == "resources" and (line.startswith(("-", "•", "*", "1.", "2.", "3.")) or line[0].isdigit()):
-                    # Clean up the resource text
-                    resource = re.sub(r'^[-•*\d.]\s*', '', line).strip()
-                    if resource:
-                        resources.append(resource)
-                elif current_section == "guidance" and guidance:
-                    guidance += " " + line
-            
-            # Cleanup and validation
-            guidance = guidance.strip()
-            steps = [s for s in steps if len(s) > 5]  # Remove very short steps
-            resources = [r for r in resources if len(r) > 5]  # Remove very short resources
-            
-            # Normalize priority and difficulty
-            priority = next((p for p in ["High", "Medium", "Low"] 
-                           if p.lower() in priority.lower()), "Medium")
-            difficulty = next((d for d in ["High", "Medium", "Low"] 
-                            if d.lower() in difficulty.lower()), "Medium")
-            
-            # Add default resources if none were provided
-            if not resources:
-                resources = [
-                    "OWASP Top 10",
-                    "SANS Security Guidelines",
-                    "CWE Database"
-                ]
-            
+
+            for line in lines:
+                if line.startswith("General Guidance:"):
+                    guidance = line.split(":", 1)[1].strip()
+                elif line.startswith("Steps:"):
+                    steps = [s.strip() for s in line.split(":", 1)[1].split(",")]
+                elif line.startswith("Priority:"):
+                    priority = line.split(":", 1)[1].strip()
+                elif line.startswith("Difficulty:"):
+                    difficulty = line.split(":", 1)[1].strip()
+                elif line.startswith("Resources:"):
+                    resources = [r.strip() for r in line.split(":", 1)[1].split(",")]
+
             return RemediationAdvice(
                 general_guidance=guidance,
                 specific_steps=steps,
@@ -481,16 +414,53 @@ Scan Time: {self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}
                 difficulty=difficulty,
                 resources=resources
             )
-            
         except Exception as e:
             logger.error(f"Error parsing AI response: {str(e)}")
-            return RemediationAdvice(
-                general_guidance="Implementation guidance could not be generated.",
-                specific_steps=["Review security documentation", "Implement security best practices"],
-                priority="Medium",
+            return self._get_static_remediation("General")
+
+    def _get_static_remediation(self, vuln_type: str) -> RemediationAdvice:
+        """Provide static remediation advice when AI is not available."""
+        # Static remediation database
+        remediation_database = {
+            "Cross-Site Scripting (XSS)": RemediationAdvice(
+                general_guidance="Implement proper input validation and output encoding.",
+                specific_steps=[
+                    "Use HTML encoding for dynamic content",
+                    "Implement Content Security Policy (CSP)",
+                    "Sanitize user input using security libraries",
+                    "Use framework-provided XSS protection features"
+                ],
+                priority="High",
                 difficulty="Medium",
-                resources=["OWASP Top 10", "SANS Security Guidelines"]
+                resources=[
+                    "OWASP XSS Prevention Cheat Sheet",
+                    "OWASP CSP Cheat Sheet"
+                ]
+            ),
+            "SQL Injection": RemediationAdvice(
+                general_guidance="Use parameterized queries and input validation.",
+                specific_steps=[
+                    "Replace dynamic SQL with prepared statements",
+                    "Implement proper input validation",
+                    "Use ORM frameworks when possible",
+                    "Apply principle of least privilege to database users"
+                ],
+                priority="Critical",
+                difficulty="Medium",
+                resources=[
+                    "OWASP SQL Injection Prevention Cheat Sheet",
+                    "Bobby Tables: A guide to preventing SQL injection"
+                ]
             )
+        }
+        
+        return remediation_database.get(vuln_type, RemediationAdvice(
+            general_guidance="Implement security best practices and proper input validation.",
+            specific_steps=["Validate all user inputs", "Apply security patches regularly"],
+            priority="Medium",
+            difficulty="Medium",
+            resources=["OWASP Top 10", "SANS Security Guidelines"]
+        ))
 
     def generate_report(self, url: str, results: List[VulnerabilityResult]) -> str:
         """Generate a comprehensive security report."""
@@ -860,6 +830,7 @@ class ModelManager:
             )
 
 def main():
+
     # Set up device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info(f"Using device: {device}")
@@ -875,7 +846,7 @@ def main():
         logger.warning(f"Could not set process priority: {str(e)}")
 
     # Load model
-    model_path = Path("models/WhiteRabbitNeo-2.5-Qwen-2.5-Coder-7B-IQ2_M.gguf")
+    model_path = Path("/bert_cybersec/model.safetensors")
     model = None if not model_path.exists() else model_manager.load_model(str(model_path))
 
     print(colored("\nWelcome to VulnX-ai Security Scanner", "blue", attrs=["bold"]))
