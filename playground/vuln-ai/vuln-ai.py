@@ -870,7 +870,7 @@ def main():
             save_report = input("\nWould you like to save this report? (y/n): ").strip().lower()
             if save_report == 'y':
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"security_scan_{timestamp}.html"
+                filename = f"security_scan_{url}@{timestamp}.html"
                 # Now we have access to both the results and url
                 html_report = scanner.report_generator.generate_html_report(url, results)
                 with open(filename, 'w', encoding='utf-8') as f:
