@@ -19,8 +19,7 @@ from datetime import datetime
 import html
 from pathlib import Path
 from typing import Tuple
-
-
+from urllib.parse import urlparse
 
 # Configure logging
 logging.basicConfig(
@@ -61,6 +60,14 @@ class VulnerabilityResult:
     impact: str
     remediation: Optional[RemediationAdvice] = None
     risk_score: float = 0.0
+
+def shorten_url(url: str) -> str:
+    """
+    Simplifies the URL to just its domain.
+    Example: https://www.example.com/long/path -> example.com
+    """
+    parsed_url = urlparse(url)
+    return parsed_url.netloc.replace("www.", "")  # Keep only the domain and remove 'www.'
 
 class SeverityLevel:
     CRITICAL = {"label": "CRITICAL", "color": "red", "score": 10.0}
@@ -873,7 +880,10 @@ def main():
             save_report = input("\nWould you like to save this report? (y/n): ").strip().lower()
             if save_report == 'y':
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"security_scan_{url}@{timestamp}.html"
+                # Get the shortened version of the URL (domain only)
+                short_url = shorten_url(url)
+                # Generate the filename using the short URL
+                filename = f"security_scan_{short_url}@{timestamp}.html"
                 # Now we have access to both the results and url
                 html_report = scanner.report_generator.generate_html_report(url, results)
                 with open(filename, 'w', encoding='utf-8') as f:
