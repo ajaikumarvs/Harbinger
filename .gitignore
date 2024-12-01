@@ -165,4 +165,5 @@ cython_debug/
 /ai/models/
 /playground/vuln-ai/models/
 
-
+#Ignore malware samples (Binary Hunter)
+BinaryHunter/exe/samples
