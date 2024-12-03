@@ -166,9 +166,7 @@ cython_debug/
 /playground/vuln-ai/models/
 
 #Ignore malware samples (Binary Hunter)
-BinaryHunter/exe/samples
-BinaryHunter/apk/samples
-BinaryHunter/dmg/samples
+BinaryHunter/samples
 
 #Ignore YARA Rules
-BinaryHunter/exe/malware_rules
+BinaryHunter/signatures
