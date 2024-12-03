@@ -170,3 +170,4 @@ BinaryHunter/samples
 
 #Ignore YARA Rules
 BinaryHunter/signatures
+BinaryHunter/signatures/custom_rules.yar
