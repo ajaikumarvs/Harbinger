@@ -167,6 +167,5 @@ cython_debug/
 
 #Ignore malware samples (Binary Hunter)
 BinaryHunter/samples
-
 #Ignore YARA Rules
 BinaryHunter/signatures
