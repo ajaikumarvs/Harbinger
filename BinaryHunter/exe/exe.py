@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 from termcolor import colored
+from tqdm import tqdm
 
 
 # Suppress ssdeep warnings
@@ -980,60 +981,67 @@ def main():
     """Main function to run the advanced antivirus scanner."""
     scanner = AdvancedVirusScanner()
     
-    print("-----Binary Hunter-----")
-    print("")
-    print("1. Scan file")
-    print("2. Scan directory")
-    choice = input("Enter choice (1-2): ")
-    
-    target = input("Enter path to scan: ")
-    report_prefix = "scan_report"
-    
-    start_time = time.time()
-    
-    try:
-        if choice == "1" and os.path.isfile(target):
-            results = [scanner.scan_file(target)]
-        elif choice == "2" and os.path.isdir(target):
-            results = scanner.scan_directory(target)
-        else:
-            print("Invalid choice or path")
-            return
+    while True:
+        print("-----Binary Hunter-----")
+        print("")
+        print("1. Scan file")
+        print("2. Scan directory")
+        print("3. Exit")
+        choice = input("Enter choice (1-3): ")
+        
+        if choice == "3":
+            print("Exiting...")
+            break
+        
+        target = input("Enter path to scan: ")
+        report_prefix = "scan_report"
+        
+        start_time = time.time()
+        
+        try:
+            if choice == "1" and os.path.isfile(target):
+                results = [scanner.scan_file(target)]
+            elif choice == "2" and os.path.isdir(target):
+                results = scanner.scan_directory(target)
+            else:
+                print("Invalid choice or path")
+                continue
+                
+            # Generate reports (both HTML and XML)
+            scanner.generate_report(results, report_prefix)
             
-        # Generate reports (both HTML and XML)
-        scanner.generate_report(results, report_prefix)
-        
-        # Print summary
-        total_time = time.time() - start_time
-        print(f"\nScan completed in {total_time:.2f} seconds")
-        print(f"Total files scanned: {len(results)}")
-        print(f"Threats found: {sum(1 for r in results if r.is_suspicious)}")
-        print(f"Reports have been generated:")
-        print(f"- HTML Report: {report_prefix}.html")
-        print(f"- XML Report: {report_prefix}.xml")
-        
-        # Print risk level summary with colored text
-        risk_levels = {
-            "critical": sum(1 for r in results if r.risk_level == "critical"),
-            "high": sum(1 for r in results if r.risk_level == "high"),
-            "medium": sum(1 for r in results if r.risk_level == "medium"),
-            "low": sum(1 for r in results if r.risk_level == "low")
-        }
-        
-        print("\nRisk Level Summary:")
-        for level, count in risk_levels.items():
-            if count > 0:
-                color = {
-                    "critical": "red",
-                    "high": "magenta",
-                    "medium": "yellow",
-                    "low": "blue"
-                }[level]
-                print(colored(f"- {level.upper()}: {count} file(s)", color, attrs=["bold"]))
-        
-    except Exception as e:
-        print(f"Error during scan: {e}")
-        logging.error(f"Scan error: {str(e)}", exc_info=True)
+            # Print summary
+            total_time = time.time() - start_time
+            print(f"\nScan completed in {total_time:.2f} seconds")
+            print(f"Total files scanned: {len(results)}")
+            print(f"Threats found: {sum(1 for r in results if r.is_suspicious)}")
+            print(f"Reports have been generated:")
+            print(f"- HTML Report: {report_prefix}.html")
+            print(f"- XML Report: {report_prefix}.xml")
+            
+            # Print risk level summary with colored text
+            risk_levels = {
+                "critical": sum(1 for r in results if r.risk_level == "critical"),
+                "high": sum(1 for r in results if r.risk_level == "high"),
+                "medium": sum(1 for r in results if r.risk_level == "medium"),
+                "low": sum(1 for r in results if r.risk_level == "low")
+            }
+            
+            print("\nRisk Level Summary:")
+            for level, count in risk_levels.items():
+                if count > 0:
+                    color = {
+                        "critical": "red",
+                        "high": "magenta",
+                        "medium": "yellow",
+                        "low": "blue"
+                    }[level]
+                    print(colored(f"- {level.upper()}: {count} file(s)", color, attrs=["bold"]))
+            
+        except Exception as e:
+            print(f"Error during scan: {e}")
+            logging.error(f"Scan error: {str(e)}", exc_info=True)
+
 
 if __name__ == "__main__":
     try:
