@@ -228,136 +228,136 @@ class HTMLReporter:
 
 # HTML template
 def _create_vulnerability_map(self, report: Report) -> str:
-        """Create vulnerability distribution map."""
-        vuln_by_host = {}
-        for finding in report.findings:
-            affected_hosts = finding.technical_details.get('affected_hosts', [])
-            for host in affected_hosts:
-                if host not in vuln_by_host:
-                    vuln_by_host[host] = {
-                        'critical': 0, 'high': 0, 
-                        'medium': 0, 'low': 0, 'info': 0
-                    }
-                vuln_by_host[host][finding.severity.value] += 1
+    """Create vulnerability distribution map."""
+    vuln_by_host = {}
+    for finding in report.findings:
+        affected_hosts = finding.technical_details.get('affected_hosts', [])
+        for host in affected_hosts:
+            if host not in vuln_by_host:
+                vuln_by_host[host] = {
+                    'critical': 0, 'high': 0, 
+                    'medium': 0, 'low': 0, 'info': 0
+                }
+            vuln_by_host[host][finding.severity.value] += 1
 
-        fig = go.Figure()
-        
-        # Add traces for each severity level
-        for severity in ['critical', 'high', 'medium', 'low', 'info']:
-            fig.add_trace(go.Bar(
-                name=severity.capitalize(),
-                x=list(vuln_by_host.keys()),
-                y=[host_data[severity] for host_data in vuln_by_host.values()],
-                marker_color=self._get_severity_color(severity)
-            ))
+    fig = go.Figure()
+    
+    # Add traces for each severity level
+    for severity in ['critical', 'high', 'medium', 'low', 'info']:
+        fig.add_trace(go.Bar(
+            name=severity.capitalize(),
+            x=list(vuln_by_host.keys()),
+            y=[host_data[severity] for host_data in vuln_by_host.values()],
+            marker_color=self._get_severity_color(severity)
+        ))
 
-        fig.update_layout(
-            title="Vulnerability Distribution by Host",
-            xaxis_title="Host",
-            yaxis_title="Number of Vulnerabilities",
-            barmode='stack',
-            template="plotly_white"
-        )
+    fig.update_layout(
+        title="Vulnerability Distribution by Host",
+        xaxis_title="Host",
+        yaxis_title="Number of Vulnerabilities",
+        barmode='stack',
+        template="plotly_white"
+    )
 
-        return self._fig_to_html(fig)
+    return self._fig_to_html(fig)
 
-    def _generate_executive_summary(self, report: Report) -> Dict[str, Any]:
-        """Generate executive summary of findings."""
-        return {
-            'risk_score': self._calculate_risk_score(report),
-            'critical_summary': self._summarize_critical_findings(report),
-            'top_recommendations': self._get_top_recommendations(report),
-            'scope_summary': {
-                'networks_scanned': len(set(h['ip'].split('.')[0:3] for h in report.hosts)),
-                'total_hosts': len(report.hosts),
-                'responsive_hosts': len([h for h in report.hosts if h.get('status') == 'up']),
-                'total_services': len(report.services),
-                'unique_services': len(set(s.get('service') for s in report.services))
-            }
+def _generate_executive_summary(self, report: Report) -> Dict[str, Any]:
+    """Generate executive summary of findings."""
+    return {
+        'risk_score': self._calculate_risk_score(report),
+        'critical_summary': self._summarize_critical_findings(report),
+        'top_recommendations': self._get_top_recommendations(report),
+        'scope_summary': {
+            'networks_scanned': len(set(h['ip'].split('.')[0:3] for h in report.hosts)),
+            'total_hosts': len(report.hosts),
+            'responsive_hosts': len([h for h in report.hosts if h.get('status') == 'up']),
+            'total_services': len(report.services),
+            'unique_services': len(set(s.get('service') for s in report.services))
         }
+    }
 
-    def _calculate_risk_score(self, report: Report) -> float:
-        """Calculate overall risk score based on findings."""
-        severity_weights = {
-            Severity.CRITICAL: 10,
-            Severity.HIGH: 7,
-            Severity.MEDIUM: 4,
-            Severity.LOW: 1,
-            Severity.INFO: 0
-        }
-        
-        max_score = len(report.findings) * 10  # Maximum possible score
-        actual_score = sum(
-            severity_weights[finding.severity]
-            for finding in report.findings
-        )
-        
-        return (actual_score / max_score * 100) if max_score > 0 else 0
+def _calculate_risk_score(self, report: Report) -> float:
+    """Calculate overall risk score based on findings."""
+    severity_weights = {
+        Severity.CRITICAL: 10,
+        Severity.HIGH: 7,
+        Severity.MEDIUM: 4,
+        Severity.LOW: 1,
+        Severity.INFO: 0
+    }
+    
+    max_score = len(report.findings) * 10  # Maximum possible score
+    actual_score = sum(
+        severity_weights[finding.severity]
+        for finding in report.findings
+    )
+    
+    return (actual_score / max_score * 100) if max_score > 0 else 0
 
-    def _summarize_critical_findings(self, report: Report) -> List[Dict[str, Any]]:
-        """Summarize critical findings for executive summary."""
-        critical_findings = report.get_findings_by_severity(Severity.CRITICAL)
-        return [{
-            'title': f.title,
-            'affected_hosts': len(f.technical_details.get('affected_hosts', [])),
-            'cvss_score': f.cvss_score,
-            'key_impact': f.description.split('.')[0]  # First sentence of description
-        } for f in critical_findings]
+def _summarize_critical_findings(self, report: Report) -> List[Dict[str, Any]]:
+    """Summarize critical findings for executive summary."""
+    critical_findings = report.get_findings_by_severity(Severity.CRITICAL)
+    return [{
+        'title': f.title,
+        'affected_hosts': len(f.technical_details.get('affected_hosts', [])),
+        'cvss_score': f.cvss_score,
+        'key_impact': f.description.split('.')[0]  # First sentence of description
+    } for f in critical_findings]
 
-    def _get_top_recommendations(self, report: Report) -> List[str]:
-        """Get top security recommendations."""
-        # Prioritize recommendations from critical and high findings
-        high_priority_findings = (
-            report.get_findings_by_severity(Severity.CRITICAL) +
-            report.get_findings_by_severity(Severity.HIGH)
-        )
-        
-        recommendations = []
-        for finding in high_priority_findings:
-            if finding.remediation:
-                recommendations.append(finding.remediation)
-        
-        # Return top 5 unique recommendations
-        return list(dict.fromkeys(recommendations))[:5]
+def _get_top_recommendations(self, report: Report) -> List[str]:
+    """Get top security recommendations."""
+    # Prioritize recommendations from critical and high findings
+    high_priority_findings = (
+        report.get_findings_by_severity(Severity.CRITICAL) +
+        report.get_findings_by_severity(Severity.HIGH)
+    )
+    
+    recommendations = []
+    for finding in high_priority_findings:
+        if finding.remediation:
+            recommendations.append(finding.remediation)
+    
+    # Return top 5 unique recommendations
+    return list(dict.fromkeys(recommendations))[:5]
 
-    def _create_trend_data(self, report: Report) -> str:
-        """Create trend analysis visualization."""
-        # This would typically compare with historical data
-        # For now, we'll create a mock trend
-        fig = go.Figure()
-        
-        # Mock historical data points
-        dates = [
-            report.metadata.scan_time - pd.Timedelta(days=x)
-            for x in range(30, -1, -5)
+def _create_trend_data(self, report: Report) -> str:
+    """Create trend analysis visualization."""
+    # This would typically compare with historical data
+    # For now, we'll create a mock trend
+    fig = go.Figure()
+    
+    # Mock historical data points
+    dates = [
+        report.metadata.scan_time - pd.Timedelta(days=x)
+        for x in range(30, -1, -5)
+    ]
+    
+    for severity in ['critical', 'high', 'medium', 'low']:
+        # Generate mock trend data
+        values = [
+            len(report.get_findings_by_severity(getattr(Severity, severity.upper())))
+            for _ in dates
         ]
         
-        for severity in ['critical', 'high', 'medium', 'low']:
-            # Generate mock trend data
-            values = [
-                len(report.get_findings_by_severity(getattr(Severity, severity.upper())))
-                for _ in dates
-            ]
-            
-            fig.add_trace(go.Scatter(
-                x=dates,
-                y=values,
-                name=severity.capitalize(),
-                line=dict(
-                    color=self._get_severity_color(severity),
-                    width=2
-                )
-            ))
+        fig.add_trace(go.Scatter(
+            x=dates,
+            y=values,
+            name=severity.capitalize(),
+            line=dict(
+                color=self._get_severity_color(severity),
+                width=2
+            )
+        ))
 
-        fig.update_layout(
-            title="Vulnerability Trend (30 Days)",
-            xaxis_title="Date",
-            yaxis_title="Number of Findings",
-            template="plotly_white",
-            showlegend=True
-        )
+    fig.update_layout(
+        title="Vulnerability Trend (30 Days)",
+        xaxis_title="Date",
+        yaxis_title="Number of Findings",
+        template="plotly_white",
+        showlegend=True
+    )
 
-        return self._fig_to_html(fig)
+    return self._fig_to_html(fig)
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
