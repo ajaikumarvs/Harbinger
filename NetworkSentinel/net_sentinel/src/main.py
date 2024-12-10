@@ -1,9 +1,15 @@
 # src/main.py
 #!/usr/bin/env python3
+
 import argparse
 import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pathlib import Path
 from typing import Optional, List
+
+from net_sentinel.network.discovery import NetworkDiscovery
+from net_sentinel.utils.cli import CLI
 
 from utils.cli import CLI
 from utils.logger import setup_logging

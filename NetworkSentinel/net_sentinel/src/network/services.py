@@ -19,6 +19,9 @@ import json
 import aiohttp
 import async_timeout
 
+#additional imports
+from net_sentinel.utils.logger import setup_logging
+
 from . import Service, ServiceDetectionError, ScanOptions
 from ..utils.logger import setup_logging
 

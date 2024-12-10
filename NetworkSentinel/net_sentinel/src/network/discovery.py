@@ -17,6 +17,10 @@ from concurrent.futures import ThreadPoolExecutor
 import struct
 import time
 
+# additional imports
+from net_sentinel.network.services import ServiceDetector
+from net_sentinel.utils.logger import setup_logging
+
 import scapy.all as scapy
 from scapy.layers.inet import IP, ICMP, TCP, UDP
 import nmap
