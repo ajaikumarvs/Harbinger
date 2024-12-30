@@ -8,7 +8,7 @@ multiple techniques and efficient parallelization.
 
 import logging
 import asyncio
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional, Set, Union
 import ipaddress
 import socket
 from datetime import datetime
@@ -17,7 +17,8 @@ from concurrent.futures import ThreadPoolExecutor
 import struct
 import time
 
-# additional imports
+# src/net_sentinel/network/discovery.py
+from typing import Dict, List, Any, Optional, Union
 from net_sentinel.network.services import ServiceDetector
 from net_sentinel.utils.logger import setup_logging
 

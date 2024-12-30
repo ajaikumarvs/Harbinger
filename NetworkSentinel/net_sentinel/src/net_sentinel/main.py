@@ -8,6 +8,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pathlib import Path
 from typing import Optional, List
 
+# Add the src directory to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
 from net_sentinel.network.discovery import NetworkDiscovery
 from net_sentinel.utils.cli import CLI
 
