@@ -1,0 +1,35 @@
+{
+  "scan_time": "2024-12-10T12:00:00",
+  "target": "192.168.1.0/24",
+  "hosts": [
+    {
+      "ip": "192.168.1.1",
+      "ports": [
+        80,
+        443
+      ],
+      "services": [
+        "http",
+        "https"
+      ]
+    },
+    {
+      "ip": "192.168.1.2",
+      "ports": [
+        22,
+        80
+      ],
+      "services": [
+        "ssh",
+        "http"
+      ]
+    }
+  ],
+  "vulnerabilities": [
+    {
+      "title": "Open HTTP Port",
+      "severity": "medium",
+      "description": "HTTP service is exposed"
+    }
+  ]
+}
