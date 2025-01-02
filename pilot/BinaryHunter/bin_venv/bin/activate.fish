@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV '/media/ak/T7 Shield/VulnX/BinaryHunter/bin_venv'
+set -gx VIRTUAL_ENV '/media/samsepi0l/T7 Shield/Harbinger/pilot/BinaryHunter/bin_venv'
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH

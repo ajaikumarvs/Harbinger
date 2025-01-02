@@ -9,7 +9,7 @@ alias deactivate 'test $?_OLD_VIRTUAL_PATH != 0 && setenv PATH "$_OLD_VIRTUAL_PA
 # Unset irrelevant variables.
 deactivate nondestructive
 
-setenv VIRTUAL_ENV '/media/ak/T7 Shield/VulnX/BinaryHunter/bin_venv'
+setenv VIRTUAL_ENV '/media/samsepi0l/T7 Shield/Harbinger/pilot/BinaryHunter/bin_venv'
 
 set _OLD_VIRTUAL_PATH="$PATH"
 setenv PATH "$VIRTUAL_ENV/"bin":$PATH"

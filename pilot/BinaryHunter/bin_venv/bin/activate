@@ -40,10 +40,10 @@ deactivate nondestructive
 if [ "${OSTYPE:-}" = "cygwin" ] || [ "${OSTYPE:-}" = "msys" ] ; then
     # transform D:\path\to\venv to /d/path/to/venv on MSYS
     # and to /cygdrive/d/path/to/venv on Cygwin
-    export VIRTUAL_ENV=$(cygpath '/media/ak/T7 Shield/VulnX/BinaryHunter/bin_venv')
+    export VIRTUAL_ENV=$(cygpath '/media/samsepi0l/T7 Shield/Harbinger/pilot/BinaryHunter/bin_venv')
 else
     # use the path as-is
-    export VIRTUAL_ENV='/media/ak/T7 Shield/VulnX/BinaryHunter/bin_venv'
+    export VIRTUAL_ENV='/media/samsepi0l/T7 Shield/Harbinger/pilot/BinaryHunter/bin_venv'
 fi
 
 _OLD_VIRTUAL_PATH="$PATH"

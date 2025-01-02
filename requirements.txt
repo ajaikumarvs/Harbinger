@@ -1,7 +1,0 @@
-torch>=1.9.0  # For PyTorch
-psutil>=5.9.0  # For system and process utilities
-transformers>=4.33.0  # For Hugging Face Transformers
-llama-cpp-python>=0.1.0  # For llama_cpp
-termcolor>=2.3.0  # For colored terminal text
-beautifulsoup4>=4.12.2  # For BeautifulSoup
-requests>=2.31.0  # For HTTP requests
