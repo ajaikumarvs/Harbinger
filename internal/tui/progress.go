@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -10,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/ajaikumarvs/harbinger/pkg/models"
+	"github.com/ajaikumarvs/harbinger/pkg/scanner"
 )
 
 // TickMsg represents a timer tick
@@ -31,6 +34,10 @@ type ScanProgressModel struct {
 	height       int
 	completed    bool
 	result       *models.ScanResult
+	scanEngine   *scanner.Engine
+	scanCtx      context.Context
+	scanCancel   context.CancelFunc
+	scanMutex    sync.RWMutex
 }
 
 // NewScanProgressModel creates a new scan progress model
@@ -40,17 +47,24 @@ func NewScanProgressModel(targetURL string) ScanProgressModel {
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
+	// Create scan engine
+	engine := scanner.GetDefaultEngine()
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return ScanProgressModel{
-		targetURL: targetURL,
-		progress:  p,
-		spinner:   s,
-		startTime: time.Now(),
+		targetURL:  targetURL,
+		progress:   p,
+		spinner:    s,
+		startTime:  time.Now(),
+		scanEngine: engine,
+		scanCtx:    ctx,
+		scanCancel: cancel,
 		scanProgress: models.ScanProgress{
 			ScanID:           fmt.Sprintf("scan_%d", time.Now().Unix()),
-			TotalSteps:       10, // Will be updated based on actual scanners
+			TotalSteps:       6, // Number of scanners in the engine
 			CompletedSteps:   0,
 			Progress:         0.0,
-			ActiveScanners:   []string{"Port Scanner", "Technology Detection"},
+			ActiveScanners:   []string{},
 			CurrentOperation: "Initializing scan...",
 			Logs: []string{
 				"Starting security scan...",
@@ -62,10 +76,25 @@ func NewScanProgressModel(targetURL string) ScanProgressModel {
 
 // Init implements tea.Model
 func (m ScanProgressModel) Init() tea.Cmd {
+	// Set up progress callback
+	m.scanEngine.SetProgressCallback(func(progress models.ScanProgress) {
+		m.scanMutex.Lock()
+		m.scanProgress = progress
+		m.scanMutex.Unlock()
+	})
+
+	// Set up logging callback
+	m.scanEngine.SetLogger(func(logMsg string) {
+		m.scanMutex.Lock()
+		m.scanProgress.Logs = append(m.scanProgress.Logs,
+			fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), logMsg))
+		m.scanMutex.Unlock()
+	})
+
 	return tea.Batch(
 		m.spinner.Tick,
+		m.startScanCmd(),
 		tickCmd(), // Start the ticker
-		// TODO: Start actual scan process
 	)
 }
 
@@ -81,10 +110,19 @@ func (m ScanProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
+			if m.scanCancel != nil {
+				m.scanCancel() // Cancel the scan
+			}
 			return m, tea.Quit
 		case "esc":
 			if m.completed {
 				// Go back to main menu
+				return NewMainMenuModel(), nil
+			} else {
+				// Cancel scan and go back
+				if m.scanCancel != nil {
+					m.scanCancel()
+				}
 				return NewMainMenuModel(), nil
 			}
 		case "enter":
@@ -96,66 +134,15 @@ func (m ScanProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case TickMsg:
-		// Simulate scan progress
+		// Check if scan is still running
 		if !m.completed {
-			m.scanProgress.CompletedSteps++
-			m.scanProgress.Progress = float64(m.scanProgress.CompletedSteps) / float64(m.scanProgress.TotalSteps)
-
-			// Update current operation based on progress
-			switch m.scanProgress.CompletedSteps {
-			case 1:
-				m.scanProgress.CurrentOperation = "Port scanning..."
-				m.scanProgress.CurrentScanner = "Port Scanner"
-			case 3:
-				m.scanProgress.CurrentOperation = "Detecting technologies..."
-				m.scanProgress.CurrentScanner = "Technology Detection"
-			case 5:
-				m.scanProgress.CurrentOperation = "SSL/TLS analysis..."
-				m.scanProgress.CurrentScanner = "SSL Analyzer"
-			case 7:
-				m.scanProgress.CurrentOperation = "Header analysis..."
-				m.scanProgress.CurrentScanner = "Header Analyzer"
-			case 9:
-				m.scanProgress.CurrentOperation = "AI analysis..."
-				m.scanProgress.CurrentScanner = "AI Processor"
-			case 10:
-				m.scanProgress.CurrentOperation = "Scan completed!"
-				m.completed = true
-				// Create mock result
-				m.result = &models.ScanResult{
-					ID:            m.scanProgress.ScanID,
-					URL:           m.targetURL,
-					Timestamp:     m.startTime,
-					Status:        models.ScanStatusCompleted,
-					SecurityScore: 75,
-					TechStack: []models.Technology{
-						{Name: "nginx", Version: "1.18.0", Category: "Web Server", Confidence: 0.95},
-						{Name: "React", Version: "17.0.2", Category: "Frontend Framework", Confidence: 0.90},
-					},
-					Vulnerabilities: []models.Vulnerability{
-						{
-							CVE:         "CVE-2023-1234",
-							Severity:    "Medium",
-							Score:       6.5,
-							Description: "Example vulnerability found during scan",
-							Remediation: "Update to latest version",
-						},
-					},
-					ScanDuration: time.Since(m.startTime),
-				}
-				return m, nil
-			}
-
-			// Add log entry
-			if m.scanProgress.CompletedSteps <= len(m.scanProgress.Logs) {
-				m.scanProgress.Logs = append(m.scanProgress.Logs,
-					fmt.Sprintf("[%s] %s",
-						time.Now().Format("15:04:05"),
-						m.scanProgress.CurrentOperation))
-			}
-
 			return m, tickCmd()
 		}
+
+	case ScanCompleteMsg:
+		m.completed = true
+		m.result = msg.Result
+		return m, nil
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -175,6 +162,11 @@ func (m ScanProgressModel) View() string {
 }
 
 func (m ScanProgressModel) renderProgress() string {
+	// Get current progress (thread-safe)
+	m.scanMutex.RLock()
+	currentProgress := m.scanProgress
+	m.scanMutex.RUnlock()
+
 	// Header
 	header := headerStyle.Render("🔍 Scanning in Progress")
 
@@ -187,29 +179,29 @@ func (m ScanProgressModel) renderProgress() string {
 	// Progress bar
 	progressBar := lipgloss.NewStyle().
 		Margin(1, 0).
-		Render(m.progress.ViewAs(m.scanProgress.Progress))
+		Render(m.progress.ViewAs(currentProgress.Progress))
 
 	// Progress stats
 	stats := lipgloss.NewStyle().
 		Margin(1, 0).
 		Render(fmt.Sprintf(
 			"Progress: %d/%d steps (%.1f%%)",
-			m.scanProgress.CompletedSteps,
-			m.scanProgress.TotalSteps,
-			m.scanProgress.Progress*100,
+			currentProgress.CompletedSteps,
+			currentProgress.TotalSteps,
+			currentProgress.Progress*100,
 		))
 
 	// Current operation
 	currentOp := lipgloss.NewStyle().
 		Foreground(infoColor).
 		Margin(1, 0).
-		Render(fmt.Sprintf("%s %s", m.spinner.View(), m.scanProgress.CurrentOperation))
+		Render(fmt.Sprintf("%s %s", m.spinner.View(), currentProgress.CurrentOperation))
 
 	// Active scanners
 	activeScannersStr := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#626262")).
 		Margin(1, 0).
-		Render(fmt.Sprintf("Active: %s", m.scanProgress.CurrentScanner))
+		Render(fmt.Sprintf("Active: %s", currentProgress.CurrentScanner))
 
 	// Recent logs (last 5)
 	logTitle := lipgloss.NewStyle().
@@ -218,12 +210,12 @@ func (m ScanProgressModel) renderProgress() string {
 		Render("Recent Activity:")
 
 	var recentLogs []string
-	start := len(m.scanProgress.Logs) - 5
+	start := len(currentProgress.Logs) - 5
 	if start < 0 {
 		start = 0
 	}
-	for i := start; i < len(m.scanProgress.Logs); i++ {
-		recentLogs = append(recentLogs, m.scanProgress.Logs[i])
+	for i := start; i < len(currentProgress.Logs); i++ {
+		recentLogs = append(recentLogs, currentProgress.Logs[i])
 	}
 
 	logsContent := lipgloss.NewStyle().
@@ -235,7 +227,7 @@ func (m ScanProgressModel) renderProgress() string {
 	help := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#626262")).
 		Margin(1, 0).
-		Render("Ctrl+C to quit")
+		Render("ESC to cancel • Ctrl+C to quit")
 
 	// Combine all parts
 	content := lipgloss.JoinVertical(
@@ -304,4 +296,24 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return TickMsg(t)
 	})
+}
+
+// startScanCmd starts the actual scan process
+func (m ScanProgressModel) startScanCmd() tea.Cmd {
+	return func() tea.Msg {
+		// Perform the scan
+		result, err := m.scanEngine.Scan(m.scanCtx, m.targetURL)
+		if err != nil {
+			// Handle error - for now just create a failed result
+			result = &models.ScanResult{
+				ID:           m.scanProgress.ScanID,
+				URL:          m.targetURL,
+				Timestamp:    m.startTime,
+				Status:       models.ScanStatusFailed,
+				ScanDuration: time.Since(m.startTime),
+			}
+		}
+
+		return ScanCompleteMsg{Result: result}
+	}
 }
