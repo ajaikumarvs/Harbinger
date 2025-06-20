@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
@@ -226,19 +227,123 @@ func (m ResultsModel) renderTechnologies() string {
 }
 
 func (m ResultsModel) renderAIAnalysis() string {
-	// Placeholder for AI analysis
-	aiContent := lipgloss.NewStyle().
-		Margin(1, 0).
-		Render(
-			"🤖 AI Analysis\n\n" +
-				"Executive Summary:\n" +
-				"This scan reveals a moderate security posture with several areas for improvement.\n\n" +
-				"Key Recommendations:\n" +
-				"• Update outdated components\n" +
-				"• Implement security headers\n" +
-				"• Review SSL/TLS configuration\n\n" +
-				"Note: Full AI analysis requires API key configuration.",
-		)
+	// Check if AI analysis is available
+	if m.result.AIAnalysis.ExecutiveSummary == "" &&
+		m.result.AIAnalysis.TechnicalAnalysis == "" &&
+		len(m.result.AIAnalysis.RootCauseAnalysis) == 0 {
+		// No AI analysis available
+		aiContent := lipgloss.NewStyle().
+			Margin(1, 0).
+			Render(
+				"🤖 AI Analysis\n\n" +
+					"AI analysis is not available for this scan.\n\n" +
+					"To enable AI analysis:\n" +
+					"• Configure an AI provider in Settings → API Keys\n" +
+					"• Supported providers: Google Gemini, OpenAI, Claude\n" +
+					"• Test your API key connection\n" +
+					"• Re-run the scan to get AI-powered insights\n\n" +
+					"💡 AI analysis provides:\n" +
+					"• Executive summaries for business stakeholders\n" +
+					"• Technical analysis and remediation guidance\n" +
+					"• Root cause analysis and prevention strategies\n" +
+					"• Business impact assessments\n" +
+					"• Compliance gap identification\n" +
+					"• Educational security insights",
+			)
+		return aiContent
+	}
 
-	return aiContent
+	// Build AI analysis content
+	var content strings.Builder
+
+	// Header
+	content.WriteString("🤖 AI-Powered Security Analysis\n\n")
+
+	// Executive Summary
+	if m.result.AIAnalysis.ExecutiveSummary != "" {
+		content.WriteString("📊 EXECUTIVE SUMMARY\n")
+		content.WriteString(strings.Repeat("─", 50) + "\n")
+		content.WriteString(m.result.AIAnalysis.ExecutiveSummary + "\n\n")
+	}
+
+	// Technical Analysis
+	if m.result.AIAnalysis.TechnicalAnalysis != "" {
+		content.WriteString("🔧 TECHNICAL ANALYSIS\n")
+		content.WriteString(strings.Repeat("─", 50) + "\n")
+		content.WriteString(m.result.AIAnalysis.TechnicalAnalysis + "\n\n")
+	}
+
+	// Root Cause Analysis
+	if len(m.result.AIAnalysis.RootCauseAnalysis) > 0 {
+		content.WriteString("🔍 ROOT CAUSE ANALYSIS\n")
+		content.WriteString(strings.Repeat("─", 50) + "\n")
+		for category, analysis := range m.result.AIAnalysis.RootCauseAnalysis {
+			if category != "general" {
+				content.WriteString(fmt.Sprintf("• %s: %s\n", strings.Title(category), analysis))
+			} else {
+				content.WriteString(analysis + "\n")
+			}
+		}
+		content.WriteString("\n")
+	}
+
+	// Remediation Plan
+	if len(m.result.AIAnalysis.RemediationPlan) > 0 {
+		content.WriteString("🛠️ REMEDIATION PLAN\n")
+		content.WriteString(strings.Repeat("─", 50) + "\n")
+		for _, step := range m.result.AIAnalysis.RemediationPlan {
+			content.WriteString(fmt.Sprintf("Priority %d: %s\n", step.Priority, step.Description))
+			content.WriteString(fmt.Sprintf("  Impact: %s\n", step.Impact))
+			content.WriteString(fmt.Sprintf("  Effort: %s | Timeline: %s\n\n", step.Effort, step.Timeline))
+		}
+	}
+
+	// Business Impact
+	if m.result.AIAnalysis.BusinessImpact.BusinessImpact != "" {
+		content.WriteString("💼 BUSINESS IMPACT ASSESSMENT\n")
+		content.WriteString(strings.Repeat("─", 50) + "\n")
+		content.WriteString(fmt.Sprintf("Overall Risk: %s\n", m.result.AIAnalysis.BusinessImpact.OverallRisk))
+		content.WriteString(m.result.AIAnalysis.BusinessImpact.BusinessImpact + "\n\n")
+	}
+
+	// Compliance Gaps
+	if len(m.result.AIAnalysis.ComplianceGaps) > 0 {
+		content.WriteString("⚖️ COMPLIANCE ANALYSIS\n")
+		content.WriteString(strings.Repeat("─", 50) + "\n")
+		for _, gap := range m.result.AIAnalysis.ComplianceGaps {
+			content.WriteString(fmt.Sprintf("Framework: %s\n", gap.Framework))
+			if gap.Requirement != "" {
+				content.WriteString(fmt.Sprintf("Requirement: %s\n", gap.Requirement))
+			}
+			content.WriteString(fmt.Sprintf("Gap: %s\n", gap.Gap))
+			if gap.Remediation != "" {
+				content.WriteString(fmt.Sprintf("Remediation: %s\n", gap.Remediation))
+			}
+			content.WriteString("\n")
+		}
+	}
+
+	// Educational Insights
+	if len(m.result.AIAnalysis.EducationalInsights) > 0 {
+		content.WriteString("🎓 EDUCATIONAL INSIGHTS\n")
+		content.WriteString(strings.Repeat("─", 50) + "\n")
+		for _, insight := range m.result.AIAnalysis.EducationalInsights {
+			content.WriteString(fmt.Sprintf("Topic: %s\n", insight.Topic))
+			content.WriteString(insight.Explanation + "\n")
+			if insight.BestPractice != "" {
+				content.WriteString(fmt.Sprintf("Best Practice: %s\n", insight.BestPractice))
+			}
+			content.WriteString("\n")
+		}
+	}
+
+	// Add scrolling hint if content is long
+	aiContent := content.String()
+	if len(aiContent) > 1000 {
+		aiContent += "\n💡 Use ↑/↓ arrows to scroll through the analysis"
+	}
+
+	return lipgloss.NewStyle().
+		Margin(1, 0).
+		Render(aiContent)
 }

@@ -86,9 +86,9 @@ go run main.go
 ## 🤖 AI Providers
 
 ### Supported Providers
-- **Google Gemini** (Recommended) - `gemini-pro`
-- **OpenAI** - `gpt-4`, `gpt-3.5-turbo`
-- **Anthropic Claude** - `claude-3-sonnet`
+- **Google Gemini** 
+- **OpenAI** 
+- **Anthropic Claude** 
 - **Custom APIs** - Bring your own endpoint
 
 ### Configuration
