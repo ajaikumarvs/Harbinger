@@ -1,7 +1,0 @@
-python-magic>=0.4.27
-yara-python>=4.3.0
-ssdeep>=3.4
-pefile>=2023.2.7
-requests>=2.31.0
-termcolor>=2.3.0
-tqdm>=4.66.1

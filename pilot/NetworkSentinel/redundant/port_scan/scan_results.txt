@@ -1,6 +1,0 @@
-
---- Scan Results for 127.0.0.1 ---
-Ports Scanned: 1-2556
-Timeout: 4.0s
-No open ports found.
-----------------------------------------
