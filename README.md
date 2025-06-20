@@ -235,6 +235,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - 💡 [Request features](https://github.com/ajaikumarvs/harbinger/discussions)
 - 📖 [Documentation](https://github.com/ajaikumarvs/harbinger/wiki)
 
----
-
-Made with ❤️ by [ajaikumarvs](https://github.com/ajaikumarvs) 
