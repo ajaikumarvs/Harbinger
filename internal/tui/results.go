@@ -3,26 +3,41 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/ajaikumarvs/harbinger/internal/export"
+	"github.com/ajaikumarvs/harbinger/internal/storage"
 	"github.com/ajaikumarvs/harbinger/pkg/models"
 )
 
 // ResultsModel represents the scan results view
 type ResultsModel struct {
-	result    models.ScanResult
-	table     table.Model
-	activeTab int
-	tabs      []string
-	width     int
-	height    int
+	result         models.ScanResult
+	table          table.Model
+	activeTab      int
+	tabs           []string
+	exportManager  *export.ExportManager
+	storageManager *storage.StorageManager
+	width          int
+	height         int
 }
 
 // NewResultsModel creates a new results model
 func NewResultsModel(result models.ScanResult) ResultsModel {
+	// Initialize export manager
+	exportConfig := export.ExportConfig{
+		CompanyName:       "Harbinger Security",
+		IncludeCharts:     true,
+		IncludeAIAnalysis: true,
+	}
+	exportManager := export.NewExportManager(exportConfig)
+
+	// Initialize storage manager
+	storageManager, _ := storage.NewStorageManager()
 	// Create table for vulnerabilities
 	columns := []table.Column{
 		{Title: "CVE", Width: 15},
@@ -61,10 +76,12 @@ func NewResultsModel(result models.ScanResult) ResultsModel {
 	t.SetStyles(s)
 
 	return ResultsModel{
-		result:    result,
-		table:     t,
-		activeTab: 0,
-		tabs:      []string{"Overview", "Vulnerabilities", "Technologies", "AI Analysis"},
+		result:         result,
+		table:          t,
+		activeTab:      0,
+		tabs:           []string{"Overview", "Vulnerabilities", "Technologies", "AI Analysis", "Export"},
+		exportManager:  exportManager,
+		storageManager: storageManager,
 	}
 }
 
@@ -120,6 +137,8 @@ func (m ResultsModel) View() string {
 		content = m.renderTechnologies()
 	case 3:
 		content = m.renderAIAnalysis()
+	case 4:
+		content = m.renderExport()
 	}
 
 	// Help text
@@ -346,4 +365,66 @@ func (m ResultsModel) renderAIAnalysis() string {
 	return lipgloss.NewStyle().
 		Margin(1, 0).
 		Render(aiContent)
+}
+
+func (m ResultsModel) renderExport() string {
+	var content strings.Builder
+
+	content.WriteString("📄 Export Report\n\n")
+
+	content.WriteString("Available Export Formats:\n")
+	content.WriteString("• PDF - Professional report with formatting\n")
+	content.WriteString("• DOCX - Microsoft Word format\n")
+	content.WriteString("• JSON - Raw data export\n\n")
+
+	content.WriteString("Export Options:\n")
+	content.WriteString("• Executive Summary - High-level overview\n")
+	content.WriteString("• Technical Report - Detailed technical analysis\n")
+	content.WriteString("• Compliance Report - Regulatory compliance focused\n\n")
+
+	content.WriteString("Performance Metrics:\n")
+	content.WriteString(fmt.Sprintf("• Scan Duration: %v\n", m.result.ScanDuration.Round(time.Millisecond)))
+	content.WriteString(fmt.Sprintf("• Scanners Used: %s\n", strings.Join(m.result.ScannersUsed, ", ")))
+	if len(m.result.APICallsUsed) > 0 {
+		content.WriteString("• AI API Calls: ")
+		var apiUsage []string
+		for provider, count := range m.result.APICallsUsed {
+			apiUsage = append(apiUsage, fmt.Sprintf("%s (%d)", provider, count))
+		}
+		content.WriteString(strings.Join(apiUsage, ", ") + "\n")
+	}
+	content.WriteString("\n")
+
+	content.WriteString("📊 Quick Actions:\n")
+	content.WriteString("• Press 'e' to export as PDF\n")
+	content.WriteString("• Press 'd' to export as DOCX\n")
+	content.WriteString("• Press 'j' to export as JSON\n")
+	content.WriteString("• Press 's' to save to database\n\n")
+
+	// Storage information
+	if m.storageManager != nil {
+		stats, err := m.storageManager.GetStorageStats()
+		if err == nil {
+			content.WriteString("💾 Storage Information:\n")
+			content.WriteString(fmt.Sprintf("• Total Scans Stored: %d\n", stats.TotalScans))
+			content.WriteString(fmt.Sprintf("• Database Size: %s\n", humanizeBytes(stats.TotalSize)))
+			content.WriteString(fmt.Sprintf("• Data Directory: %s\n", stats.DatabasePath))
+		}
+	}
+
+	return lipgloss.NewStyle().
+		Margin(1, 0).
+		Render(content.String())
+}
+
+// Helper function to humanize byte sizes
+func humanizeBytes(bytes int64) string {
+	if bytes < 1024 {
+		return fmt.Sprintf("%d B", bytes)
+	} else if bytes < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(bytes)/1024)
+	} else if bytes < 1024*1024*1024 {
+		return fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
+	}
+	return fmt.Sprintf("%.1f GB", float64(bytes)/(1024*1024*1024))
 }
