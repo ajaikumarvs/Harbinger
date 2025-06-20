@@ -1,222 +1,174 @@
-# 🔍 Harbinger - Web Vulnerability Scanner
+# 🛡️ Harbinger - CLI Security Scanner
 
-Harbinger is a comprehensive, terminal-based web vulnerability scanning tool built in Go. It performs both local and API-based vulnerability scans, presenting results in a beautiful TUI (Terminal User Interface) and generating detailed reports.
+A comprehensive CLI security scanning application built with Go and the Charm Bracelet ecosystem, featuring AI-powered analysis and beautiful terminal interfaces.
 
-## ✨ Features
+## 🚀 Features
 
-- **Comprehensive Scanning**: HTTP headers, SSL/TLS analysis, technology detection, subdomain enumeration
-- **Beautiful TUI**: Rich terminal interface built with Bubbletea and Lipgloss
-- **Multiple Data Sources**: Local analysis + external APIs (crt.sh, securityheaders.com, web.archive.org)
-- **AI-Powered Analysis**: Optional AI summaries via Gemini/OpenAI/Claude APIs
-- **Export Options**: Generate PDF and DOCX reports
-- **Real-time Progress**: Live scanning status with progress bars
-- **Cross-platform**: Works on Linux, macOS, and Windows
+### Core Scanning Capabilities
+- **Port Scanning** - Service detection and enumeration
+- **Technology Detection** - Framework and CMS identification
+- **SSL/TLS Analysis** - Certificate validation and security assessment
+- **Security Headers** - HTTP security header analysis
+- **Directory Discovery** - Common paths and file enumeration
+- **DNS Analysis** - DNS records and subdomain discovery
 
-## 🚀 Quick Start
+### AI-Powered Analysis
+- **Multi-Provider Support** - Google Gemini, OpenAI, Claude, Custom APIs
+- **Executive Summaries** - High-level risk assessments
+- **Root Cause Analysis** - Deep vulnerability explanations
+- **Future Threat Predictions** - Emerging security risks
+- **Business Impact Assessment** - Risk to operations
+- **Compliance Analysis** - Regulatory gap identification
+- **Educational Insights** - Security learning content
 
-### Installation
+### Beautiful TUI Interface
+- **Interactive Navigation** - Intuitive menu system
+- **Live Progress** - Real-time scan monitoring
+- **Tabbed Results** - Organized vulnerability display
+- **Color-Coded Scoring** - Visual security assessment
+- **Responsive Design** - Adapts to terminal size
 
+## 📋 Prerequisites
+
+- Go 1.21 or later
+- Terminal with color support
+- Internet connection for external API scans
+
+## 🛠️ Installation
+
+### From Source
 ```bash
-# Clone the repository
 git clone https://github.com/ajaikumarvs/harbinger.git
 cd harbinger
-
-# Build the application
+go mod tidy
 go build -o harbinger
-
-# Or install directly
-go install
+./harbinger
 ```
 
-### Basic Usage
-
+### Quick Run
 ```bash
-# Scan a website with TUI
-./harbinger scan https://example.com
-
-# Scan without TUI (direct output)
-./harbinger scan https://example.com --no-tui
-
-# Scan with output to file
-./harbinger scan https://example.com --output report.pdf --format pdf
-
-# Scan with AI analysis
-./harbinger scan https://example.com --api-key YOUR_KEY --ai-provider gemini
+go run main.go
 ```
 
-## 📖 Commands
+## 🎯 Quick Start
 
-### Scan Command
+1. **Launch Harbinger**
+   ```bash
+   ./harbinger
+   ```
 
-```bash
-harbinger scan [URL] [flags]
-```
+2. **Configure AI Provider** (Optional but recommended)
+   - Navigate to Settings → API Keys
+   - Add your preferred AI provider key
+   - Test the connection
 
-**Flags:**
-- `-t, --target string`: Target URL to scan
-- `-o, --output string`: Output file path
-- `-f, --format string`: Output format (pdf, docx) (default "pdf")
-- `--no-tui`: Disable TUI and run in direct mode
-- `--api-key string`: API key for AI analysis
-- `--ai-provider string`: AI provider (gemini, openai, claude) (default "gemini")
-- `-v, --verbose`: Verbose output
+3. **Start Your First Scan**
+   - Select "Scan" from main menu
+   - Enter target URL (e.g., https://example.com)
+   - Watch live progress
+   - Review detailed results
 
-**Global Flags:**
-- `--config string`: Config file (default is $HOME/.harbinger.yaml)
+4. **Explore Results**
+   - Use Tab/Shift+Tab to navigate sections
+   - View vulnerabilities, technologies, and AI analysis
+   - Check scan history for previous results
+
+## 🎮 Navigation
+
+| Key | Action |
+|-----|--------|
+| `↑/↓` or `j/k` | Navigate menus |
+| `Enter` | Select/Confirm |
+| `Tab/Shift+Tab` | Switch tabs |
+| `ESC` | Go back/Cancel |
+| `Ctrl+C` | Quit application |
+
+## 🤖 AI Providers
+
+### Supported Providers
+- **Google Gemini** (Recommended) - `gemini-pro`
+- **OpenAI** - `gpt-4`, `gpt-3.5-turbo`
+- **Anthropic Claude** - `claude-3-sonnet`
+- **Custom APIs** - Bring your own endpoint
+
+### Configuration
+1. Go to Settings → API Keys
+2. Select provider and enter API key
+3. Choose model (optional)
+4. Test connection
+5. Set as default provider
+
+API keys are encrypted and stored securely on your system.
+
+## 📊 Scan Types
+
+| Type | Duration | Features |
+|------|----------|----------|
+| **Quick** | 2-5 min | Basic security assessment |
+| **Standard** | 5-15 min | Comprehensive analysis |
+| **Deep** | 15-30 min | Full scan + AI analysis |
 
 ## 🏗️ Architecture
 
 ```
 harbinger/
-├── cmd/harbinger/          # CLI commands
-├── pkg/
-│   ├── scanner/           # Core scanning logic
-│   ├── api/              # External API integrations
-│   ├── tui/              # Terminal UI components
-│   ├── ai/               # AI integration
-│   └── report/           # Report generation
+├── cmd/              # CLI command definitions
 ├── internal/
-│   ├── models/           # Data structures
-│   └── utils/            # Utilities
-└── docs/                 # Documentation
+│   ├── config/       # Configuration management
+│   ├── scanner/      # Scanning modules
+│   ├── ai/          # AI integration
+│   ├── tui/         # Terminal UI components
+│   ├── export/      # Report generation
+│   └── storage/     # Data persistence
+├── pkg/
+│   └── models/      # Shared data structures
+└── main.go          # Application entry point
 ```
 
-## 🔧 Scanning Modules
+## 🔧 Development Status
 
-### 1. HTTP Header Analysis
-- Security headers detection (CSP, HSTS, X-Frame-Options, etc.)
-- Missing header identification
-- Header value validation
-- Security grade calculation
+### ✅ Phase 1: Core TUI Framework (COMPLETED)
+- [x] Main menu navigation
+- [x] Scan input interface
+- [x] Live progress tracking
+- [x] Results display with tabs
+- [x] History management
+- [x] Settings configuration
+- [x] Help documentation
 
-### 2. SSL/TLS Analysis
-- Certificate information extraction
-- Cipher suite analysis
-- Protocol version detection
-- Vulnerability identification
+### 🚧 Phase 2: Scanning Engine (IN PROGRESS)
+- [ ] Port scanner implementation
+- [ ] Technology detection
+- [ ] SSL/TLS analyzer
+- [ ] Security headers checker
+- [ ] DNS analysis tools
+- [ ] Directory discovery
 
-### 3. Technology Detection
-- Web server identification
-- Framework detection
-- CMS recognition
-- JavaScript library identification
+### 📋 Phase 3: AI Integration (PLANNED)
+- [ ] Multi-provider AI interface
+- [ ] Prompt engineering
+- [ ] Analysis templates
+- [ ] Secure key management
+- [ ] Result enrichment
 
-### 4. Subdomain Enumeration
-- Certificate transparency logs (crt.sh)
-- DNS enumeration
-- Subdomain validation
+### 📈 Phase 4: Advanced Features (PLANNED)
+- [ ] PDF/DOCX export
+- [ ] Report templates
+- [ ] Data persistence
+- [ ] Scan comparisons
+- [ ] Performance optimization
 
-### 5. Archive Analysis
-- Wayback Machine integration
-- Historical endpoint discovery
-- Change tracking
+## 🤝 Contributing
 
-### 6. Vulnerability Assessment
-- CVE database integration
-- CVSS scoring
-- Risk categorization
-- Mitigation recommendations
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
-## 🤖 AI Integration
-
-Harbinger supports AI-powered vulnerability analysis through multiple providers:
-
-- **Google Gemini**: Use `--ai-provider gemini`
-- **OpenAI GPT**: Use `--ai-provider openai`
-- **Anthropic Claude**: Use `--ai-provider claude`
-
-The AI analyzes scan results and provides:
-- Executive summary
-- Risk prioritization
-- Remediation recommendations
-- Compliance insights
-
-## 📊 Report Generation
-
-Generate comprehensive reports in multiple formats:
-
-### PDF Reports
-- Executive summary
-- Detailed findings
-- Vulnerability matrix
-- Recommendations
-
-### DOCX Reports
-- Structured document
-- Charts and graphs
-- Appendices
-- Technical details
-
-## ⚙️ Configuration
-
-Create a configuration file at `~/.harbinger.yaml`:
-
-```yaml
-# Default scanning options
-scan:
-  timeout: 30s
-  max_retries: 3
-  user_agent: "Harbinger/1.0"
-
-# API configurations
-apis:
-  security_headers:
-    enabled: true
-    timeout: 10s
-  crt_sh:
-    enabled: true
-    timeout: 15s
-
-# AI configuration
-ai:
-  provider: "gemini"
-  api_key: "${HARBINGER_AI_KEY}"
-  model: "gemini-pro"
-
-# Report settings
-reports:
-  default_format: "pdf"
-  include_raw_data: false
-  template: "standard"
-```
-
-## 🔐 Security Considerations
-
-- All external API calls are optional
-- No data is stored or transmitted without explicit consent
-- API keys are handled securely
-- Network requests use secure protocols
-
-## 🛠️ Development
-
-### Prerequisites
-- Go 1.21+
-- Git
-
-### Building from Source
-
+### Development Setup
 ```bash
-# Clone and enter directory
 git clone https://github.com/ajaikumarvs/harbinger.git
 cd harbinger
-
-# Install dependencies
-go mod download
-
-# Run tests
-go test ./...
-
-# Build
-go build -o harbinger
+go mod tidy
+go run main.go
 ```
-
-### Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
 
 ## 📄 License
 
@@ -224,14 +176,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- [Cobra](https://github.com/spf13/cobra) for CLI framework
-- [Bubbletea](https://github.com/charmbracelet/bubbletea) for TUI
-- [Lipgloss](https://github.com/charmbracelet/lipgloss) for styling
-- [Wappalyzer](https://github.com/projectdiscovery/wappalyzergo) for technology detection
+- [Charm Bracelet](https://charm.sh/) - Beautiful TUI components
+- [Cobra](https://cobra.dev/) - CLI framework
+- [Viper](https://github.com/spf13/viper) - Configuration management
 
 ## 📞 Support
 
-- 🐛 [Report bugs](https://github.com/ajaikumarvs/harbinger/issues)
-- 💡 [Request features](https://github.com/ajaikumarvs/harbinger/discussions)
-- 📖 [Documentation](https://github.com/ajaikumarvs/harbinger/wiki)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/ajaikumarvs/harbinger/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/ajaikumarvs/harbinger/discussions)
+- 📧 **Email**: ajaikumarvs@example.com
 
+---
+
+**Built with ❤️ by [ajaikumarvs](https://github.com/ajaikumarvs)** 

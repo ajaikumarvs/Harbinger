@@ -1,9 +1,15 @@
 package main
 
 import (
-	"github.com/ajaikumarvs/harbinger/cmd/harbinger"
+	"log"
+	"os"
+
+	"github.com/ajaikumarvs/harbinger/cmd"
 )
 
 func main() {
-	harbinger.Execute()
+	if err := cmd.Execute(); err != nil {
+		log.Fatal(err)
+		os.Exit(1)
+	}
 }
