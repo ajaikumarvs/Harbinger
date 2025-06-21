@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/ajaikumarvs/harbinger/internal/storage"
 	"github.com/ajaikumarvs/harbinger/pkg/models"
 	"github.com/ajaikumarvs/harbinger/pkg/scanner"
 )
@@ -23,22 +24,31 @@ type ScanCompleteMsg struct {
 	Result *models.ScanResult
 }
 
+// ScanSavedMsg represents successful scan save
+type ScanSavedMsg struct {
+	Success bool
+	Error   error
+}
+
 // ScanProgressModel represents the scan progress screen
 type ScanProgressModel struct {
-	targetURL    string
-	progress     progress.Model
-	spinner      spinner.Model
-	scanProgress models.ScanProgress
-	startTime    time.Time
-	width        int
-	height       int
-	completed    bool
-	result       *models.ScanResult
-	scanEngine   *scanner.Engine
-	aiEngine     *scanner.AIEnhancedEngine // Store AI engine for enhanced scans
-	scanCtx      context.Context
-	scanCancel   context.CancelFunc
-	scanMutex    sync.RWMutex
+	targetURL      string
+	progress       progress.Model
+	spinner        spinner.Model
+	scanProgress   models.ScanProgress
+	startTime      time.Time
+	width          int
+	height         int
+	completed      bool
+	result         *models.ScanResult
+	scanEngine     *scanner.Engine
+	aiEngine       *scanner.AIEnhancedEngine // Store AI engine for enhanced scans
+	scanCtx        context.Context
+	scanCancel     context.CancelFunc
+	scanMutex      sync.RWMutex
+	storageManager *storage.StorageManager
+	saved          bool
+	saveError      error
 }
 
 // NewScanProgressModel creates a new scan progress model
@@ -62,15 +72,24 @@ func NewScanProgressModel(targetURL string) ScanProgressModel {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// Initialize storage manager
+	storageManager, err := storage.NewStorageManager()
+	if err != nil {
+		// Log the error but continue without storage (scan will still work)
+		storageManager = nil
+	}
+
 	return ScanProgressModel{
-		targetURL:  targetURL,
-		progress:   p,
-		spinner:    s,
-		startTime:  time.Now(),
-		scanEngine: engine,
-		aiEngine:   aiEngine,
-		scanCtx:    ctx,
-		scanCancel: cancel,
+		targetURL:      targetURL,
+		progress:       p,
+		spinner:        s,
+		startTime:      time.Now(),
+		scanEngine:     engine,
+		aiEngine:       aiEngine,
+		scanCtx:        ctx,
+		scanCancel:     cancel,
+		storageManager: storageManager,
+		saved:          false,
 		scanProgress: models.ScanProgress{
 			ScanID:           fmt.Sprintf("scan_%d", time.Now().Unix()),
 			TotalSteps:       6, // Number of scanners in the engine
@@ -154,6 +173,16 @@ func (m ScanProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ScanCompleteMsg:
 		m.completed = true
 		m.result = msg.Result
+
+		// Automatically save the scan to storage
+		if m.result != nil {
+			return m, m.saveScanCmd()
+		}
+		return m, nil
+
+	case ScanSavedMsg:
+		m.saved = msg.Success
+		m.saveError = msg.Error
 		return m, nil
 
 	case spinner.TickMsg:
@@ -285,6 +314,25 @@ func (m ScanProgressModel) renderCompleted() string {
 			len(m.result.Vulnerabilities),
 		))
 
+	// Save status
+	var saveStatus string
+	if m.saved {
+		saveStatus = lipgloss.NewStyle().
+			Foreground(successColor).
+			Margin(1, 0).
+			Render("💾 Scan saved to history successfully!")
+	} else if m.saveError != nil {
+		saveStatus = lipgloss.NewStyle().
+			Foreground(errorColor).
+			Margin(1, 0).
+			Render(fmt.Sprintf("💾 Save error: %v", m.saveError))
+	} else {
+		saveStatus = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#626262")).
+			Margin(1, 0).
+			Render("💾 Saving scan to history...")
+	}
+
 	// Help text
 	help := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#626262")).
@@ -297,6 +345,7 @@ func (m ScanProgressModel) renderCompleted() string {
 		header,
 		summary,
 		stats,
+		saveStatus,
 		help,
 	)
 
@@ -335,5 +384,16 @@ func (m ScanProgressModel) startScanCmd() tea.Cmd {
 		}
 
 		return ScanCompleteMsg{Result: result}
+	}
+}
+
+// saveScanCmd saves the scan result to storage
+func (m ScanProgressModel) saveScanCmd() tea.Cmd {
+	return func() tea.Msg {
+		if m.storageManager != nil && m.result != nil {
+			err := m.storageManager.SaveScanResult(m.result)
+			return ScanSavedMsg{Success: err == nil, Error: err}
+		}
+		return ScanSavedMsg{Success: false, Error: fmt.Errorf("storage not available")}
 	}
 }

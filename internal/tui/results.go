@@ -201,7 +201,11 @@ func NewResultsModel(result models.ScanResult) ResultsModel {
 	exportManager := export.NewExportManager(exportConfig)
 
 	// Initialize storage manager
-	storageManager, _ := storage.NewStorageManager()
+	storageManager, err := storage.NewStorageManager()
+	if err != nil {
+		// Continue without storage manager if initialization fails
+		storageManager = nil
+	}
 
 	// Create table for vulnerabilities
 	columns := []table.Column{
@@ -301,6 +305,11 @@ func (m ResultsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeTab = (m.activeTab + 1) % len(m.tabs)
 		case "shift+tab":
 			m.activeTab = (m.activeTab - 1 + len(m.tabs)) % len(m.tabs)
+		case "s":
+			// Save scan to database (only if in Export tab)
+			if m.activeTab == 4 && m.storageManager != nil { // Export tab
+				return m, m.saveScanCmd()
+			}
 		}
 
 		// Handle AI Analysis tab navigation
@@ -341,6 +350,20 @@ func (m ResultsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, cmd
+}
+
+// saveScanCmd saves the current scan result to storage
+func (m ResultsModel) saveScanCmd() tea.Cmd {
+	return func() tea.Msg {
+		if m.storageManager != nil {
+			err := m.storageManager.SaveScanResult(&m.result)
+			if err != nil {
+				return fmt.Sprintf("Error saving scan: %v", err)
+			}
+			return "Scan saved to database successfully!"
+		}
+		return "Storage not available"
+	}
 }
 
 // View implements tea.Model
