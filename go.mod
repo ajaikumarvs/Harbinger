@@ -16,8 +16,6 @@ require (
 
 require (
 	github.com/dustin/go-humanize v1.0.1
-	github.com/jung-kurt/gofpdf v1.16.2
-	github.com/lukasjarosch/go-docx v0.5.0
 	github.com/shirou/gopsutil/v3 v3.24.5
 	golang.org/x/crypto v0.39.0
 )

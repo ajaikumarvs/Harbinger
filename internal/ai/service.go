@@ -120,11 +120,17 @@ func (s *Service) PerformSpecificAnalysis(ctx context.Context, result models.Sca
 
 // ConfigureProvider sets up an AI provider with API key
 func (s *Service) ConfigureProvider(provider models.APIProvider, apiKey, model string) error {
+	return s.ConfigureProviderWithURL(provider, apiKey, model, "")
+}
+
+// ConfigureProviderWithURL sets up an AI provider with API key and custom URL
+func (s *Service) ConfigureProviderWithURL(provider models.APIProvider, apiKey, model, customURL string) error {
 	// Store the API key securely
 	key := models.APIKey{
 		Provider:   provider,
 		Key:        apiKey,
 		Model:      model,
+		CustomURL:  customURL,
 		IsActive:   false,
 		TestStatus: "Not tested",
 	}
@@ -142,6 +148,8 @@ func (s *Service) ConfigureProvider(provider models.APIProvider, apiKey, model s
 		client = NewOpenAIClient(apiKey, model)
 	case models.ProviderClaude:
 		client = NewClaudeClient(apiKey, model)
+	case models.ProviderCustom:
+		client = NewCustomClient(apiKey, model, customURL)
 	default:
 		return fmt.Errorf("unsupported provider: %s", provider)
 	}
@@ -219,6 +227,8 @@ func (s *Service) initializeProviders() error {
 			client = NewOpenAIClient(key.Key, key.Model)
 		case models.ProviderClaude:
 			client = NewClaudeClient(key.Key, key.Model)
+		case models.ProviderCustom:
+			client = NewCustomClient(key.Key, key.Model, key.CustomURL)
 		default:
 			continue // Skip unsupported providers
 		}

@@ -494,3 +494,251 @@ func (c *ClaudeClient) parseResponse(response string, analysisType models.AIAnal
 
 	return aiReport, nil
 }
+
+// CustomClient implements the AI client interface for custom API endpoints
+type CustomClient struct {
+	apiKey        string
+	model         string
+	baseURL       string
+	httpClient    *http.Client
+	promptBuilder *PromptBuilder
+}
+
+// CustomRequest represents a generic request to a custom API
+type CustomRequest struct {
+	Model    string                   `json:"model,omitempty"`
+	Messages []map[string]interface{} `json:"messages,omitempty"`
+	Prompt   string                   `json:"prompt,omitempty"`
+	Input    string                   `json:"input,omitempty"`
+	Query    string                   `json:"query,omitempty"`
+}
+
+// CustomResponse represents a generic response from a custom API
+type CustomResponse struct {
+	Response string                 `json:"response,omitempty"`
+	Text     string                 `json:"text,omitempty"`
+	Content  string                 `json:"content,omitempty"`
+	Answer   string                 `json:"answer,omitempty"`
+	Result   string                 `json:"result,omitempty"`
+	Output   string                 `json:"output,omitempty"`
+	Choices  []CustomChoice         `json:"choices,omitempty"`
+	Data     map[string]interface{} `json:"data,omitempty"`
+}
+
+// CustomChoice represents a choice in a custom API response
+type CustomChoice struct {
+	Text    string `json:"text,omitempty"`
+	Content string `json:"content,omitempty"`
+	Message struct {
+		Content string `json:"content,omitempty"`
+	} `json:"message,omitempty"`
+}
+
+// NewCustomClient creates a new custom API client
+func NewCustomClient(apiKey, model, baseURL string) *CustomClient {
+	if model == "" {
+		model = "default"
+	}
+	if baseURL == "" {
+		baseURL = "http://localhost:8080/api/v1"
+	}
+
+	return &CustomClient{
+		apiKey:        apiKey,
+		model:         model,
+		baseURL:       baseURL,
+		httpClient:    &http.Client{Timeout: 120 * time.Second},
+		promptBuilder: NewPromptBuilder(),
+	}
+}
+
+// Analyze performs AI analysis using a custom API endpoint
+func (c *CustomClient) Analyze(ctx context.Context, result models.ScanResult, analysisType models.AIAnalysisType) (*models.AIReport, error) {
+	systemPrompt, userPrompt, err := c.promptBuilder.BuildPrompt(analysisType, result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build prompt: %w", err)
+	}
+
+	fullPrompt := fmt.Sprintf("%s\n\n%s", systemPrompt, userPrompt)
+	response, err := c.makeRequest(ctx, fullPrompt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make API request: %w", err)
+	}
+
+	return c.parseResponse(response, analysisType)
+}
+
+// TestConnection tests the connection to the custom API
+func (c *CustomClient) TestConnection(ctx context.Context) error {
+	testPrompt := "Test connection. Please respond with 'Connection successful'."
+	_, err := c.makeRequest(ctx, testPrompt)
+	if err != nil {
+		return fmt.Errorf("connection test failed: %w", err)
+	}
+	return nil
+}
+
+// GetProvider returns the provider type
+func (c *CustomClient) GetProvider() models.APIProvider {
+	return models.ProviderCustom
+}
+
+// GetModel returns the model being used
+func (c *CustomClient) GetModel() string {
+	return c.model
+}
+
+func (c *CustomClient) makeRequest(ctx context.Context, prompt string) (string, error) {
+	// Try different common request formats for custom APIs
+	requestFormats := []CustomRequest{
+		// Format 1: OpenAI-compatible
+		{
+			Model: c.model,
+			Messages: []map[string]interface{}{
+				{"role": "user", "content": prompt},
+			},
+		},
+		// Format 2: Simple prompt
+		{
+			Prompt: prompt,
+		},
+		// Format 3: Input field
+		{
+			Input: prompt,
+		},
+		// Format 4: Query field
+		{
+			Query: prompt,
+		},
+	}
+
+	var lastErr error
+	for _, reqBody := range requestFormats {
+		response, err := c.tryRequest(ctx, reqBody)
+		if err == nil {
+			return response, nil
+		}
+		lastErr = err
+	}
+
+	return "", fmt.Errorf("all request formats failed, last error: %w", lastErr)
+}
+
+func (c *CustomClient) tryRequest(ctx context.Context, reqBody CustomRequest) (string, error) {
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Try common endpoints
+	endpoints := []string{
+		"/chat/completions",
+		"/completions",
+		"/generate",
+		"/ask",
+		"/query",
+		"",
+	}
+
+	for _, endpoint := range endpoints {
+		url := c.baseURL + endpoint
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+		if err != nil {
+			continue
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		if c.apiKey != "" {
+			// Try different authentication methods
+			req.Header.Set("Authorization", "Bearer "+c.apiKey)
+			req.Header.Set("X-API-Key", c.apiKey)
+			req.Header.Set("API-Key", c.apiKey)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			continue
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			return c.extractResponse(respBody)
+		}
+	}
+
+	return "", fmt.Errorf("no working endpoint found")
+}
+
+func (c *CustomClient) extractResponse(respBody []byte) (string, error) {
+	var customResp CustomResponse
+	if err := json.Unmarshal(respBody, &customResp); err != nil {
+		// If JSON parsing fails, try to use the raw response
+		return string(respBody), nil
+	}
+
+	// Try to extract response from various possible fields
+	if customResp.Response != "" {
+		return customResp.Response, nil
+	}
+	if customResp.Text != "" {
+		return customResp.Text, nil
+	}
+	if customResp.Content != "" {
+		return customResp.Content, nil
+	}
+	if customResp.Answer != "" {
+		return customResp.Answer, nil
+	}
+	if customResp.Result != "" {
+		return customResp.Result, nil
+	}
+	if customResp.Output != "" {
+		return customResp.Output, nil
+	}
+	if len(customResp.Choices) > 0 {
+		choice := customResp.Choices[0]
+		if choice.Text != "" {
+			return choice.Text, nil
+		}
+		if choice.Content != "" {
+			return choice.Content, nil
+		}
+		if choice.Message.Content != "" {
+			return choice.Message.Content, nil
+		}
+	}
+
+	// If no structured response found, return the raw JSON
+	return string(respBody), nil
+}
+
+func (c *CustomClient) parseResponse(response string, analysisType models.AIAnalysisType) (*models.AIReport, error) {
+	aiReport := &models.AIReport{}
+
+	switch analysisType {
+	case models.ExecutiveSummary:
+		aiReport.ExecutiveSummary = response
+	case models.TechnicalAnalysis:
+		aiReport.TechnicalAnalysis = response
+	case models.RootCauseAnalysis:
+		aiReport.RootCauseAnalysis = map[string]string{"general": response}
+	case models.BusinessImpactAssessment:
+		aiReport.BusinessImpact = models.BusinessRiskAssessment{
+			OverallRisk:    "Medium",
+			BusinessImpact: response,
+		}
+	case models.ComplianceAnalysis:
+		aiReport.ComplianceGaps = []models.ComplianceIssue{{Framework: "General", Gap: response}}
+	case models.EducationalInsights:
+		aiReport.EducationalInsights = []models.SecurityLesson{{Topic: "Security Analysis", Explanation: response}}
+	default:
+		return nil, fmt.Errorf("unsupported analysis type: %v", analysisType)
+	}
+
+	return aiReport, nil
+}

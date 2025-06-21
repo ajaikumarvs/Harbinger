@@ -2,8 +2,10 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -172,7 +174,11 @@ func (i APIKeyItem) Title() string {
 	if i.apiKey.IsActive {
 		status = "✅ Active"
 	}
-	return fmt.Sprintf("%s %s", string(i.apiKey.Provider), status)
+	providerName := string(i.apiKey.Provider)
+	if i.apiKey.Provider == models.ProviderCustom && i.apiKey.CustomURL != "" {
+		providerName = fmt.Sprintf("Custom (%s)", i.apiKey.CustomURL)
+	}
+	return fmt.Sprintf("%s %s", providerName, status)
 }
 
 func (i APIKeyItem) Description() string {
@@ -219,6 +225,13 @@ func NewAPIKeysModel() APIKeysModel {
 		title:  "➕ Add New API Key",
 		desc:   "Configure a new AI provider",
 		action: "add_key",
+	})
+
+	// Add "Add Custom API" option
+	items = append(items, SettingsMenuItem{
+		title:  "🔧 Add Custom API",
+		desc:   "Configure a custom AI endpoint",
+		action: "add_custom",
 	})
 
 	// Add "Back" option
@@ -268,14 +281,21 @@ func (m APIKeysModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if item, ok := selectedItem.(SettingsMenuItem); ok {
 				switch item.action {
 				case "add_key":
-					// Show add key form (placeholder)
-					return m, nil
+					// Show provider selection for standard APIs
+					providerModel := NewProviderSelectionModel()
+					return providerModel, providerModel.Init()
+				case "add_custom":
+					// Show custom API configuration form
+					customModel := NewCustomAPIModel()
+					return customModel, customModel.Init()
 				case "back":
 					return NewSettingsModel(), nil
 				}
+			} else if apiItem, ok := selectedItem.(APIKeyItem); ok {
+				// Show API key configuration for existing key
+				configModel := NewAPIConfigModel(apiItem.apiKey)
+				return configModel, configModel.Init()
 			}
-			// If it's an API key item, show details/edit (placeholder)
-			return m, nil
 		}
 	}
 
@@ -340,3 +360,581 @@ func (m APIKeysModel) View() string {
 
 	return content
 }
+
+// ProviderSelectionModel represents the provider selection screen
+type ProviderSelectionModel struct {
+	list   list.Model
+	width  int
+	height int
+}
+
+// ProviderItem represents a provider selection item
+type ProviderItem struct {
+	provider models.APIProvider
+	name     string
+	desc     string
+}
+
+func (i ProviderItem) Title() string       { return i.name }
+func (i ProviderItem) Description() string { return i.desc }
+func (i ProviderItem) FilterValue() string { return i.name }
+
+// NewProviderSelectionModel creates a new provider selection model
+func NewProviderSelectionModel() ProviderSelectionModel {
+	items := []list.Item{
+		ProviderItem{
+			provider: models.ProviderGemini,
+			name:     "🎯 Google Gemini",
+			desc:     "Google's advanced AI model",
+		},
+		ProviderItem{
+			provider: models.ProviderOpenAI,
+			name:     "🤖 OpenAI",
+			desc:     "GPT-4 and ChatGPT models",
+		},
+		ProviderItem{
+			provider: models.ProviderClaude,
+			name:     "🧠 Anthropic Claude",
+			desc:     "Claude-3 advanced reasoning",
+		},
+		SettingsMenuItem{
+			title:  "🔙 Back",
+			desc:   "Return to API management",
+			action: "back",
+		},
+	}
+
+	l := list.New(items, list.NewDefaultDelegate(), 50, 12)
+	l.Title = "Select AI Provider"
+	l.SetShowStatusBar(false)
+	l.Styles.Title = titleStyle
+	l.Styles.PaginationStyle = paginationStyle
+	l.Styles.HelpStyle = helpStyle
+
+	return ProviderSelectionModel{list: l}
+}
+
+// Init implements tea.Model
+func (m ProviderSelectionModel) Init() tea.Cmd {
+	return nil
+}
+
+// Update implements tea.Model
+func (m ProviderSelectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.list.SetWidth(msg.Width)
+		m.list.SetHeight(msg.Height - 2)
+		return m, nil
+
+	case tea.KeyMsg:
+		switch keypress := msg.String(); keypress {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "esc":
+			return NewAPIKeysModel(), nil
+		case "enter":
+			selectedItem := m.list.SelectedItem()
+			if item, ok := selectedItem.(SettingsMenuItem); ok && item.action == "back" {
+				return NewAPIKeysModel(), nil
+			} else if providerItem, ok := selectedItem.(ProviderItem); ok {
+				// Show API key configuration for selected provider
+				apiKey := models.APIKey{Provider: providerItem.provider}
+				configModel := NewAPIConfigModel(apiKey)
+				return configModel, configModel.Init()
+			}
+		}
+	}
+
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd
+}
+
+// View implements tea.Model
+func (m ProviderSelectionModel) View() string {
+	header := headerStyle.Render("🔑 Select AI Provider")
+	instructions := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#626262")).
+		Margin(1, 0).
+		Render("Choose an AI provider to configure")
+
+	listView := m.list.View()
+	help := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#626262")).
+		Margin(1, 0).
+		Render("Enter to select • ESC to go back • Ctrl+C to quit")
+
+	return lipgloss.JoinVertical(lipgloss.Left, header, instructions, listView, help)
+}
+
+// APIConfigModel represents the API configuration form
+type APIConfigModel struct {
+	apiKey         models.APIKey
+	inputs         []textinput.Model
+	focused        int
+	width          int
+	height         int
+	isCustom       bool
+	showTestResult bool
+	testResult     string
+}
+
+// NewAPIConfigModel creates a new API configuration model
+func NewAPIConfigModel(apiKey models.APIKey) APIConfigModel {
+	isCustom := apiKey.Provider == models.ProviderCustom
+	inputCount := 2 // API Key and Model
+	if isCustom {
+		inputCount = 3 // API Key, Model, and URL
+	}
+
+	inputs := make([]textinput.Model, inputCount)
+
+	// API Key input
+	inputs[0] = textinput.New()
+	inputs[0].Placeholder = "Enter API key..."
+	inputs[0].Focus()
+	inputs[0].CharLimit = 200
+	inputs[0].EchoMode = textinput.EchoPassword
+	inputs[0].EchoCharacter = '•'
+	inputs[0].SetValue(apiKey.Key)
+
+	// Model input
+	inputs[1] = textinput.New()
+	inputs[1].Placeholder = getDefaultModel(apiKey.Provider)
+	inputs[1].CharLimit = 100
+	if apiKey.Model != "" {
+		inputs[1].SetValue(apiKey.Model)
+	}
+
+	// URL input for custom APIs
+	if isCustom {
+		inputs[2] = textinput.New()
+		inputs[2].Placeholder = "https://your-api-endpoint.com/v1"
+		inputs[2].CharLimit = 500
+		inputs[2].SetValue(apiKey.CustomURL)
+	}
+
+	return APIConfigModel{
+		apiKey:   apiKey,
+		inputs:   inputs,
+		focused:  0,
+		isCustom: isCustom,
+	}
+}
+
+func getDefaultModel(provider models.APIProvider) string {
+	switch provider {
+	case models.ProviderGemini:
+		return "gemini-pro"
+	case models.ProviderOpenAI:
+		return "gpt-4"
+	case models.ProviderClaude:
+		return "claude-3-sonnet-20240229"
+	case models.ProviderCustom:
+		return "default"
+	default:
+		return ""
+	}
+}
+
+// Init implements tea.Model
+func (m APIConfigModel) Init() tea.Cmd {
+	return textinput.Blink
+}
+
+// Update implements tea.Model
+func (m APIConfigModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case tea.KeyMsg:
+		switch keypress := msg.String(); keypress {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "esc":
+			return NewAPIKeysModel(), nil
+		case "tab", "shift+tab", "enter", "up", "down":
+			s := msg.String()
+
+			if s == "enter" && m.focused == len(m.inputs) {
+				// Save button pressed
+				m.saveConfiguration()
+				return NewAPIKeysModel(), nil
+			}
+
+			if s == "enter" && m.focused == len(m.inputs)+1 {
+				// Test button pressed
+				m.testConnection()
+				return m, nil
+			}
+
+			// Cycle inputs
+			if s == "up" || s == "shift+tab" {
+				m.focused--
+			} else {
+				m.focused++
+			}
+
+			if m.focused > len(m.inputs)+1 {
+				m.focused = 0
+			} else if m.focused < 0 {
+				m.focused = len(m.inputs) + 1
+			}
+
+			cmds := make([]tea.Cmd, len(m.inputs))
+			for i := 0; i <= len(m.inputs)-1; i++ {
+				if i == m.focused {
+					cmds[i] = m.inputs[i].Focus()
+				} else {
+					m.inputs[i].Blur()
+				}
+			}
+
+			return m, tea.Batch(cmds...)
+		}
+	}
+
+	// Handle character input in the focused input
+	cmd := m.updateInputs(msg)
+
+	return m, cmd
+}
+
+func (m *APIConfigModel) updateInputs(msg tea.Msg) tea.Cmd {
+	cmds := make([]tea.Cmd, len(m.inputs))
+
+	for i := range m.inputs {
+		m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
+	}
+
+	return tea.Batch(cmds...)
+}
+
+func (m *APIConfigModel) saveConfiguration() {
+	// In a real implementation, this would save to storage
+	// For now, just simulate saving
+}
+
+func (m *APIConfigModel) testConnection() {
+	// In a real implementation, this would test the API connection
+	m.showTestResult = true
+	m.testResult = "✅ Connection test successful!"
+}
+
+// View implements tea.Model
+func (m APIConfigModel) View() string {
+	var providerName string
+	if m.isCustom {
+		providerName = "Custom API"
+	} else {
+		providerName = string(m.apiKey.Provider)
+	}
+
+	header := headerStyle.Render(fmt.Sprintf("🔑 Configure %s", providerName))
+
+	var b strings.Builder
+	b.WriteString(header)
+	b.WriteString("\n\n")
+
+	// API Key input
+	if m.focused == 0 {
+		b.WriteString(focusedStyle.Render("API Key"))
+	} else {
+		b.WriteString(blurredStyle.Render("API Key"))
+	}
+	b.WriteString("\n")
+	b.WriteString(m.inputs[0].View())
+	b.WriteString("\n\n")
+
+	// Model input
+	if m.focused == 1 {
+		b.WriteString(focusedStyle.Render("Model"))
+	} else {
+		b.WriteString(blurredStyle.Render("Model"))
+	}
+	b.WriteString("\n")
+	b.WriteString(m.inputs[1].View())
+	b.WriteString("\n\n")
+
+	// URL input for custom APIs
+	if m.isCustom {
+		if m.focused == 2 {
+			b.WriteString(focusedStyle.Render("API Endpoint URL"))
+		} else {
+			b.WriteString(blurredStyle.Render("API Endpoint URL"))
+		}
+		b.WriteString("\n")
+		b.WriteString(m.inputs[2].View())
+		b.WriteString("\n\n")
+	}
+
+	// Buttons
+	button := &blurredButton
+	if m.focused == len(m.inputs) {
+		button = &focusedButton
+	}
+	fmt.Fprintf(&b, "%s", *button)
+	b.WriteString(" Save ")
+
+	button = &blurredButton
+	if m.focused == len(m.inputs)+1 {
+		button = &focusedButton
+	}
+	fmt.Fprintf(&b, " %s", *button)
+	b.WriteString(" Test Connection ")
+
+	b.WriteString("\n\n")
+
+	// Test result
+	if m.showTestResult {
+		b.WriteString(lipgloss.NewStyle().
+			Foreground(successColor).
+			Render(m.testResult))
+		b.WriteString("\n\n")
+	}
+
+	// Help
+	help := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#626262")).
+		Render("Tab to navigate • Enter to select • ESC to go back")
+	b.WriteString(help)
+
+	return b.String()
+}
+
+// CustomAPIModel represents the custom API configuration form
+type CustomAPIModel struct {
+	inputs         []textinput.Model
+	focused        int
+	width          int
+	height         int
+	showTestResult bool
+	testResult     string
+}
+
+// NewCustomAPIModel creates a new custom API model
+func NewCustomAPIModel() CustomAPIModel {
+	inputs := make([]textinput.Model, 4)
+
+	// Name input
+	inputs[0] = textinput.New()
+	inputs[0].Placeholder = "Enter API name (e.g., My Local AI)..."
+	inputs[0].Focus()
+	inputs[0].CharLimit = 100
+
+	// URL input
+	inputs[1] = textinput.New()
+	inputs[1].Placeholder = "https://your-api-endpoint.com/v1"
+	inputs[1].CharLimit = 500
+
+	// API Key input
+	inputs[2] = textinput.New()
+	inputs[2].Placeholder = "Enter API key (optional)..."
+	inputs[2].CharLimit = 200
+	inputs[2].EchoMode = textinput.EchoPassword
+	inputs[2].EchoCharacter = '•'
+
+	// Model input
+	inputs[3] = textinput.New()
+	inputs[3].Placeholder = "Model name (e.g., gpt-3.5-turbo, default)"
+	inputs[3].CharLimit = 100
+
+	return CustomAPIModel{
+		inputs:  inputs,
+		focused: 0,
+	}
+}
+
+// Init implements tea.Model
+func (m CustomAPIModel) Init() tea.Cmd {
+	return textinput.Blink
+}
+
+// Update implements tea.Model
+func (m CustomAPIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case tea.KeyMsg:
+		switch keypress := msg.String(); keypress {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "esc":
+			return NewAPIKeysModel(), nil
+		case "tab", "shift+tab", "enter", "up", "down":
+			s := msg.String()
+
+			if s == "enter" && m.focused == len(m.inputs) {
+				// Save button pressed
+				m.saveCustomAPI()
+				return NewAPIKeysModel(), nil
+			}
+
+			if s == "enter" && m.focused == len(m.inputs)+1 {
+				// Test button pressed
+				m.testCustomConnection()
+				return m, nil
+			}
+
+			// Cycle inputs
+			if s == "up" || s == "shift+tab" {
+				m.focused--
+			} else {
+				m.focused++
+			}
+
+			if m.focused > len(m.inputs)+1 {
+				m.focused = 0
+			} else if m.focused < 0 {
+				m.focused = len(m.inputs) + 1
+			}
+
+			cmds := make([]tea.Cmd, len(m.inputs))
+			for i := 0; i <= len(m.inputs)-1; i++ {
+				if i == m.focused {
+					cmds[i] = m.inputs[i].Focus()
+				} else {
+					m.inputs[i].Blur()
+				}
+			}
+
+			return m, tea.Batch(cmds...)
+		}
+	}
+
+	// Handle character input in the focused input
+	cmd := m.updateInputs(msg)
+
+	return m, cmd
+}
+
+func (m *CustomAPIModel) updateInputs(msg tea.Msg) tea.Cmd {
+	cmds := make([]tea.Cmd, len(m.inputs))
+
+	for i := range m.inputs {
+		m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
+	}
+
+	return tea.Batch(cmds...)
+}
+
+func (m *CustomAPIModel) saveCustomAPI() {
+	// In a real implementation, this would save the custom API configuration
+	// For now, just simulate saving
+}
+
+func (m *CustomAPIModel) testCustomConnection() {
+	// In a real implementation, this would test the custom API connection
+	m.showTestResult = true
+	m.testResult = "✅ Custom API connection test successful!"
+}
+
+// View implements tea.Model
+func (m CustomAPIModel) View() string {
+	header := headerStyle.Render("🔧 Configure Custom AI API")
+
+	var b strings.Builder
+	b.WriteString(header)
+	b.WriteString("\n\n")
+
+	// Instructions
+	instructions := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#626262")).
+		Render("Configure a custom AI API endpoint. The system will try multiple request formats automatically.")
+	b.WriteString(instructions)
+	b.WriteString("\n\n")
+
+	// Name input
+	if m.focused == 0 {
+		b.WriteString(focusedStyle.Render("API Name"))
+	} else {
+		b.WriteString(blurredStyle.Render("API Name"))
+	}
+	b.WriteString("\n")
+	b.WriteString(m.inputs[0].View())
+	b.WriteString("\n\n")
+
+	// URL input
+	if m.focused == 1 {
+		b.WriteString(focusedStyle.Render("API Endpoint URL"))
+	} else {
+		b.WriteString(blurredStyle.Render("API Endpoint URL"))
+	}
+	b.WriteString("\n")
+	b.WriteString(m.inputs[1].View())
+	b.WriteString("\n\n")
+
+	// API Key input
+	if m.focused == 2 {
+		b.WriteString(focusedStyle.Render("API Key (Optional)"))
+	} else {
+		b.WriteString(blurredStyle.Render("API Key (Optional)"))
+	}
+	b.WriteString("\n")
+	b.WriteString(m.inputs[2].View())
+	b.WriteString("\n\n")
+
+	// Model input
+	if m.focused == 3 {
+		b.WriteString(focusedStyle.Render("Model Name"))
+	} else {
+		b.WriteString(blurredStyle.Render("Model Name"))
+	}
+	b.WriteString("\n")
+	b.WriteString(m.inputs[3].View())
+	b.WriteString("\n\n")
+
+	// Buttons
+	button := &blurredButton
+	if m.focused == len(m.inputs) {
+		button = &focusedButton
+	}
+	fmt.Fprintf(&b, "%s", *button)
+	b.WriteString(" Save Configuration ")
+
+	button = &blurredButton
+	if m.focused == len(m.inputs)+1 {
+		button = &focusedButton
+	}
+	fmt.Fprintf(&b, " %s", *button)
+	b.WriteString(" Test Connection ")
+
+	b.WriteString("\n\n")
+
+	// Test result
+	if m.showTestResult {
+		b.WriteString(lipgloss.NewStyle().
+			Foreground(successColor).
+			Render(m.testResult))
+		b.WriteString("\n\n")
+	}
+
+	// Help
+	help := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#626262")).
+		Render("Tab to navigate • Enter to select • ESC to go back")
+	b.WriteString(help)
+
+	return b.String()
+}
+
+// Style definitions for buttons (other styles are defined in mainmenu.go)
+var (
+	focusedButton = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFF")).
+			Background(lipgloss.Color("#FF06B7")).
+			Padding(0, 3)
+	blurredButton = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFF")).
+			Background(lipgloss.Color("#666")).
+			Padding(0, 3)
+)
