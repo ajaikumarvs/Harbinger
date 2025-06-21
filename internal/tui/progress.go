@@ -35,6 +35,7 @@ type ScanProgressModel struct {
 	completed    bool
 	result       *models.ScanResult
 	scanEngine   *scanner.Engine
+	aiEngine     *scanner.AIEnhancedEngine // Store AI engine for enhanced scans
 	scanCtx      context.Context
 	scanCancel   context.CancelFunc
 	scanMutex    sync.RWMutex
@@ -47,8 +48,18 @@ func NewScanProgressModel(targetURL string) ScanProgressModel {
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
-	// Create scan engine
-	engine := scanner.GetDefaultEngine()
+	// Create AI-enhanced scan engine
+	aiEngine, err := scanner.GetDefaultAIEngine()
+	var engine *scanner.Engine
+	if err != nil {
+		// Fallback to regular engine if AI engine fails
+		engine = scanner.GetDefaultEngine()
+		aiEngine = nil
+	} else {
+		// Use the base engine from AI-enhanced engine for progress tracking
+		engine = aiEngine.Engine
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return ScanProgressModel{
@@ -57,6 +68,7 @@ func NewScanProgressModel(targetURL string) ScanProgressModel {
 		spinner:    s,
 		startTime:  time.Now(),
 		scanEngine: engine,
+		aiEngine:   aiEngine,
 		scanCtx:    ctx,
 		scanCancel: cancel,
 		scanProgress: models.ScanProgress{
@@ -301,8 +313,16 @@ func tickCmd() tea.Cmd {
 // startScanCmd starts the actual scan process
 func (m ScanProgressModel) startScanCmd() tea.Cmd {
 	return func() tea.Msg {
-		// Perform the scan
-		result, err := m.scanEngine.Scan(m.scanCtx, m.targetURL)
+		var result *models.ScanResult
+		var err error
+
+		// Use AI-enhanced scan if available, otherwise regular scan
+		if m.aiEngine != nil {
+			result, err = m.aiEngine.ScanWithAI(m.scanCtx, m.targetURL)
+		} else {
+			result, err = m.scanEngine.Scan(m.scanCtx, m.targetURL)
+		}
+
 		if err != nil {
 			// Handle error - for now just create a failed result
 			result = &models.ScanResult{

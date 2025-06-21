@@ -195,9 +195,16 @@ func (i APIKeyItem) FilterValue() string { return string(i.apiKey.Provider) }
 
 // NewAPIKeysModel creates a new API keys model
 func NewAPIKeysModel() APIKeysModel {
-	// Load real API keys from storage
-	apiKeys := loadRealAPIKeys()
+	return newAPIKeysModelWithData(loadRealAPIKeys())
+}
 
+// NewAPIKeysModelWithRefresh creates a new API keys model with refreshed data
+func NewAPIKeysModelWithRefresh() APIKeysModel {
+	return newAPIKeysModelWithData(loadRealAPIKeys())
+}
+
+// newAPIKeysModelWithData creates the API keys model with provided data
+func newAPIKeysModelWithData(apiKeys []models.APIKey) APIKeysModel {
 	items := []list.Item{}
 	for _, key := range apiKeys {
 		items = append(items, APIKeyItem{apiKey: key})
@@ -436,11 +443,11 @@ func (m ProviderSelectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "esc":
-			return NewAPIKeysModel(), nil
+			return NewAPIKeysModelWithRefresh(), nil
 		case "enter":
 			selectedItem := m.list.SelectedItem()
 			if item, ok := selectedItem.(SettingsMenuItem); ok && item.action == "back" {
-				return NewAPIKeysModel(), nil
+				return NewAPIKeysModelWithRefresh(), nil
 			} else if providerItem, ok := selectedItem.(ProviderItem); ok {
 				// Show API key configuration for selected provider
 				apiKey := models.APIKey{Provider: providerItem.provider}
@@ -560,14 +567,14 @@ func (m APIConfigModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "esc":
-			return NewAPIKeysModel(), nil
+			return NewAPIKeysModelWithRefresh(), nil
 		case "tab", "shift+tab", "enter", "up", "down":
 			s := msg.String()
 
 			if s == "enter" && m.focused == len(m.inputs) {
 				// Save button pressed
 				m.saveConfiguration()
-				return NewAPIKeysModel(), nil
+				return NewAPIKeysModelWithRefresh(), nil
 			}
 
 			if s == "enter" && m.focused == len(m.inputs)+1 {
@@ -672,7 +679,7 @@ func (m *APIConfigModel) testConnection() {
 		customURL = m.inputs[2].Value()
 	}
 
-	// Temporarily configure the provider for testing
+	// First save the configuration
 	if m.isCustom {
 		err = service.ConfigureProviderWithURL(m.apiKey.Provider, apiKey, model, customURL)
 	} else {
@@ -694,6 +701,8 @@ func (m *APIConfigModel) testConnection() {
 		m.testResult = fmt.Sprintf("❌ Connection failed: %v", err)
 	} else {
 		m.testResult = "✅ Connection test successful!"
+		// Also set as active provider if test is successful
+		service.SetActiveProvider(m.apiKey.Provider)
 	}
 }
 
@@ -839,14 +848,14 @@ func (m CustomAPIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "esc":
-			return NewAPIKeysModel(), nil
+			return NewAPIKeysModelWithRefresh(), nil
 		case "tab", "shift+tab", "enter", "up", "down":
 			s := msg.String()
 
 			if s == "enter" && m.focused == len(m.inputs) {
 				// Save button pressed
 				m.saveCustomAPI()
-				return NewAPIKeysModel(), nil
+				return NewAPIKeysModelWithRefresh(), nil
 			}
 
 			if s == "enter" && m.focused == len(m.inputs)+1 {
@@ -953,7 +962,7 @@ func (m *CustomAPIModel) testCustomConnection() {
 		model = "default"
 	}
 
-	// Temporarily configure the custom API for testing
+	// First save the custom API configuration
 	err = service.ConfigureProviderWithURL(models.ProviderCustom, apiKey, model, url)
 	if err != nil {
 		m.showTestResult = true
@@ -970,6 +979,8 @@ func (m *CustomAPIModel) testCustomConnection() {
 		m.testResult = fmt.Sprintf("❌ Connection failed: %v", err)
 	} else {
 		m.testResult = "✅ Custom API connection test successful!"
+		// Also set as active provider if test is successful
+		service.SetActiveProvider(models.ProviderCustom)
 	}
 }
 
