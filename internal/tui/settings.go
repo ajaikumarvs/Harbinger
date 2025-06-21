@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/ajaikumarvs/harbinger/internal/ai"
 	"github.com/ajaikumarvs/harbinger/pkg/models"
 )
 
@@ -193,27 +195,8 @@ func (i APIKeyItem) FilterValue() string { return string(i.apiKey.Provider) }
 
 // NewAPIKeysModel creates a new API keys model
 func NewAPIKeysModel() APIKeysModel {
-	// Mock API keys data
-	apiKeys := []models.APIKey{
-		{
-			Provider:   models.ProviderGemini,
-			IsActive:   true,
-			TestStatus: "OK",
-			Model:      "gemini-pro",
-		},
-		{
-			Provider:   models.ProviderOpenAI,
-			IsActive:   false,
-			TestStatus: "Not configured",
-			Model:      "gpt-4",
-		},
-		{
-			Provider:   models.ProviderClaude,
-			IsActive:   false,
-			TestStatus: "Not configured",
-			Model:      "claude-3-sonnet",
-		},
-	}
+	// Load real API keys from storage
+	apiKeys := loadRealAPIKeys()
 
 	items := []list.Item{}
 	for _, key := range apiKeys {
@@ -252,6 +235,25 @@ func NewAPIKeysModel() APIKeysModel {
 		list:    l,
 		apiKeys: apiKeys,
 	}
+}
+
+// loadRealAPIKeys loads the actual API keys from storage
+func loadRealAPIKeys() []models.APIKey {
+	// Try to create a keystore to load real API keys
+	keyStore, err := ai.NewKeyStore()
+	if err != nil {
+		// If keystore creation fails, return empty slice
+		return []models.APIKey{}
+	}
+
+	// Get all API keys from storage
+	apiKeys, err := keyStore.GetAllAPIKeys()
+	if err != nil {
+		// If loading fails, return empty slice
+		return []models.APIKey{}
+	}
+
+	return apiKeys
 }
 
 // Init implements tea.Model
@@ -617,14 +619,82 @@ func (m *APIConfigModel) updateInputs(msg tea.Msg) tea.Cmd {
 }
 
 func (m *APIConfigModel) saveConfiguration() {
-	// In a real implementation, this would save to storage
-	// For now, just simulate saving
+	// Create AI service to save the configuration
+	service, err := ai.NewService()
+	if err != nil {
+		// Handle error - for now just return
+		return
+	}
+
+	// Get values from inputs
+	apiKey := m.inputs[0].Value()
+	model := m.inputs[1].Value()
+	if model == "" {
+		model = getDefaultModel(m.apiKey.Provider)
+	}
+
+	var customURL string
+	if m.isCustom && len(m.inputs) > 2 {
+		customURL = m.inputs[2].Value()
+	}
+
+	// Save the configuration
+	if m.isCustom {
+		err = service.ConfigureProviderWithURL(m.apiKey.Provider, apiKey, model, customURL)
+	} else {
+		err = service.ConfigureProvider(m.apiKey.Provider, apiKey, model)
+	}
+
+	if err != nil {
+		// Handle error - for now just return
+		return
+	}
 }
 
 func (m *APIConfigModel) testConnection() {
-	// In a real implementation, this would test the API connection
+	// Create AI service to test the connection
+	service, err := ai.NewService()
+	if err != nil {
+		m.showTestResult = true
+		m.testResult = "❌ Failed to create AI service"
+		return
+	}
+
+	// Get values from inputs and temporarily configure
+	apiKey := m.inputs[0].Value()
+	model := m.inputs[1].Value()
+	if model == "" {
+		model = getDefaultModel(m.apiKey.Provider)
+	}
+
+	var customURL string
+	if m.isCustom && len(m.inputs) > 2 {
+		customURL = m.inputs[2].Value()
+	}
+
+	// Temporarily configure the provider for testing
+	if m.isCustom {
+		err = service.ConfigureProviderWithURL(m.apiKey.Provider, apiKey, model, customURL)
+	} else {
+		err = service.ConfigureProvider(m.apiKey.Provider, apiKey, model)
+	}
+
+	if err != nil {
+		m.showTestResult = true
+		m.testResult = "❌ Configuration failed"
+		return
+	}
+
+	// Test the connection
+	ctx := context.Background()
+	err = service.TestProvider(ctx, m.apiKey.Provider)
+
 	m.showTestResult = true
-	m.testResult = "✅ Connection test successful!"
+	if err != nil {
+		m.testResult = fmt.Sprintf("❌ Connection failed: %v", err)
+	} else {
+		m.testResult = "✅ Connection test successful!"
+	}
 }
 
 // View implements tea.Model
@@ -828,14 +898,79 @@ func (m *CustomAPIModel) updateInputs(msg tea.Msg) tea.Cmd {
 }
 
 func (m *CustomAPIModel) saveCustomAPI() {
-	// In a real implementation, this would save the custom API configuration
-	// For now, just simulate saving
+	// Create AI service to save the custom API configuration
+	service, err := ai.NewService()
+	if err != nil {
+		// Handle error - for now just return
+		return
+	}
+
+	// Get values from inputs
+	name := m.inputs[0].Value()
+	url := m.inputs[1].Value()
+	apiKey := m.inputs[2].Value()
+	model := m.inputs[3].Value()
+
+	if name == "" || url == "" {
+		// Basic validation - name and URL are required
+		return
+	}
+
+	if model == "" {
+		model = "default"
+	}
+
+	// Save the custom API configuration
+	err = service.ConfigureProviderWithURL(models.ProviderCustom, apiKey, model, url)
+	if err != nil {
+		// Handle error - for now just return
+		return
+	}
 }
 
 func (m *CustomAPIModel) testCustomConnection() {
-	// In a real implementation, this would test the custom API connection
+	// Create AI service to test the custom API connection
+	service, err := ai.NewService()
+	if err != nil {
+		m.showTestResult = true
+		m.testResult = "❌ Failed to create AI service"
+		return
+	}
+
+	// Get values from inputs
+	name := m.inputs[0].Value()
+	url := m.inputs[1].Value()
+	apiKey := m.inputs[2].Value()
+	model := m.inputs[3].Value()
+
+	if name == "" || url == "" {
+		m.showTestResult = true
+		m.testResult = "❌ Name and URL are required"
+		return
+	}
+
+	if model == "" {
+		model = "default"
+	}
+
+	// Temporarily configure the custom API for testing
+	err = service.ConfigureProviderWithURL(models.ProviderCustom, apiKey, model, url)
+	if err != nil {
+		m.showTestResult = true
+		m.testResult = "❌ Configuration failed"
+		return
+	}
+
+	// Test the connection
+	ctx := context.Background()
+	err = service.TestProvider(ctx, models.ProviderCustom)
+
 	m.showTestResult = true
-	m.testResult = "✅ Custom API connection test successful!"
+	if err != nil {
+		m.testResult = fmt.Sprintf("❌ Connection failed: %v", err)
+	} else {
+		m.testResult = "✅ Custom API connection test successful!"
+	}
 }
 
 // View implements tea.Model
