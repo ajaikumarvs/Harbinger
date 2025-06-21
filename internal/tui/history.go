@@ -53,7 +53,8 @@ func NewHistoryModel() HistoryModel {
 	storageManager, err := storage.NewStorageManager()
 	var loadError error
 	if err != nil {
-		loadError = fmt.Errorf("failed to initialize storage: %w", err)
+		// Capture the actual error from storage initialization
+		loadError = err
 		storageManager = nil
 	}
 
@@ -69,6 +70,10 @@ func NewHistoryModel() HistoryModel {
 func (m *HistoryModel) loadHistoryCmd() tea.Cmd {
 	return func() tea.Msg {
 		if m.storageManager == nil {
+			// If we already have an initialization error, return that instead of a generic message
+			if m.loadError != nil {
+				return historyLoadedMsg{error: m.loadError}
+			}
 			return historyLoadedMsg{error: fmt.Errorf("storage manager not initialized")}
 		}
 

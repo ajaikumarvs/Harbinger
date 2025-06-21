@@ -10,11 +10,10 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
-	// Phase 4 dependencies
-	github.com/syndtr/goleveldb v1.0.0
 )
 
 require (
+	github.com/charmbracelet/glamour v0.10.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/shirou/gopsutil/v3 v3.24.5
 	golang.org/x/crypto v0.39.0
@@ -26,7 +25,6 @@ require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/charmbracelet/colorprofile v0.3.1 // indirect
-	github.com/charmbracelet/glamour v0.10.0 // indirect
 	github.com/charmbracelet/harmonica v0.2.0 // indirect
 	github.com/charmbracelet/x/ansi v0.9.3 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.13 // indirect
@@ -37,7 +35,6 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-viper/mapstructure/v2 v2.3.0 // indirect
-	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect

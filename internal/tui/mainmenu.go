@@ -146,7 +146,7 @@ func (m MainMenuModel) View() string {
 	)
 
 	// Create footer
-	footer := footerStyle.Render("v1.0.0 | Built with ❤️  by ajaikumarvs")
+	footer := footerStyle.Render("v1.0.0")
 
 	// Combine all parts
 	return lipgloss.JoinVertical(

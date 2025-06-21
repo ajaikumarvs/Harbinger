@@ -3,23 +3,18 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/filter"
-	"github.com/syndtr/goleveldb/leveldb/opt"
-	"github.com/syndtr/goleveldb/leveldb/util"
-
 	"github.com/ajaikumarvs/harbinger/pkg/models"
 )
 
-// StorageManager handles persistent storage of scan results
+// StorageManager handles persistent storage of scan results using JSON files
 type StorageManager struct {
-	db       *leveldb.DB
 	dataPath string
 }
 
@@ -36,65 +31,31 @@ func NewStorageManager() (*StorageManager, error) {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
-	// Open LevelDB with optimized settings
-	opts := &opt.Options{
-		Filter:             filter.NewBloomFilter(10),
-		Compression:        opt.SnappyCompression,
-		BlockCacheCapacity: 16 * 1024 * 1024, // 16MB cache
-		WriteBuffer:        4 * 1024 * 1024,  // 4MB write buffer
-	}
-
-	dbPath := filepath.Join(dataPath, "scans.db")
-	db, err := leveldb.OpenFile(dbPath, opts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
-	}
-
 	return &StorageManager{
-		db:       db,
 		dataPath: dataPath,
 	}, nil
 }
 
-// Close closes the database connection
+// Close is a no-op for file-based storage but maintains interface compatibility
 func (sm *StorageManager) Close() error {
-	if sm.db != nil {
-		return sm.db.Close()
-	}
 	return nil
 }
 
-// SaveScanResult saves a scan result to persistent storage
+// SaveScanResult saves a scan result to a JSON file
 func (sm *StorageManager) SaveScanResult(result *models.ScanResult) error {
-	key := fmt.Sprintf("scan:%s", result.ID)
-
-	data, err := json.Marshal(result)
+	// Save the full scan result
+	scanFile := filepath.Join(sm.dataPath, fmt.Sprintf("scan_%s.json", result.ID))
+	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal scan result: %w", err)
 	}
 
-	if err := sm.db.Put([]byte(key), data, nil); err != nil {
-		return fmt.Errorf("failed to save scan result: %w", err)
+	if err := ioutil.WriteFile(scanFile, data, 0644); err != nil {
+		return fmt.Errorf("failed to write scan file: %w", err)
 	}
 
-	// Also save to index for quick retrieval
-	indexKey := fmt.Sprintf("index:%d:%s", result.Timestamp.Unix(), result.ID)
-	indexData, err := json.Marshal(ScanIndex{
-		ID:            result.ID,
-		URL:           result.URL,
-		Timestamp:     result.Timestamp,
-		SecurityScore: result.SecurityScore,
-		Status:        result.Status,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to marshal scan index: %w", err)
-	}
-
-	if err := sm.db.Put([]byte(indexKey), indexData, nil); err != nil {
-		return fmt.Errorf("failed to save scan index: %w", err)
-	}
-
-	return nil
+	// Update the index file
+	return sm.updateIndex()
 }
 
 // ScanIndex represents a lightweight scan record for indexing
@@ -106,16 +67,66 @@ type ScanIndex struct {
 	Status        models.ScanStatus `json:"status"`
 }
 
+// updateIndex rebuilds the index file with all current scans
+func (sm *StorageManager) updateIndex() error {
+	var indices []ScanIndex
+
+	// Read all scan files
+	files, err := ioutil.ReadDir(sm.dataPath)
+	if err != nil {
+		return fmt.Errorf("failed to read data directory: %w", err)
+	}
+
+	for _, file := range files {
+		if !strings.HasPrefix(file.Name(), "scan_") || !strings.HasSuffix(file.Name(), ".json") {
+			continue
+		}
+
+		scanPath := filepath.Join(sm.dataPath, file.Name())
+		data, err := ioutil.ReadFile(scanPath)
+		if err != nil {
+			continue // Skip unreadable files
+		}
+
+		var result models.ScanResult
+		if err := json.Unmarshal(data, &result); err != nil {
+			continue // Skip malformed files
+		}
+
+		indices = append(indices, ScanIndex{
+			ID:            result.ID,
+			URL:           result.URL,
+			Timestamp:     result.Timestamp,
+			SecurityScore: result.SecurityScore,
+			Status:        result.Status,
+		})
+	}
+
+	// Sort by timestamp (newest first)
+	sort.Slice(indices, func(i, j int) bool {
+		return indices[i].Timestamp.After(indices[j].Timestamp)
+	})
+
+	// Write index file
+	indexPath := filepath.Join(sm.dataPath, "index.json")
+	indexData, err := json.MarshalIndent(indices, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal index: %w", err)
+	}
+
+	return ioutil.WriteFile(indexPath, indexData, 0644)
+}
+
 // GetScanResult retrieves a scan result by ID
 func (sm *StorageManager) GetScanResult(id string) (*models.ScanResult, error) {
-	key := fmt.Sprintf("scan:%s", id)
+	scanFile := filepath.Join(sm.dataPath, fmt.Sprintf("scan_%s.json", id))
 
-	data, err := sm.db.Get([]byte(key), nil)
+	data, err := ioutil.ReadFile(scanFile)
 	if err != nil {
-		if err == leveldb.ErrNotFound {
+		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("scan result not found: %s", id)
 		}
-		return nil, fmt.Errorf("failed to get scan result: %w", err)
+		return nil, fmt.Errorf("failed to read scan file: %w", err)
 	}
 
 	var result models.ScanResult
@@ -128,30 +139,24 @@ func (sm *StorageManager) GetScanResult(id string) (*models.ScanResult, error) {
 
 // ListScanResults returns a list of all scan results, optionally filtered
 func (sm *StorageManager) ListScanResults(limit int, offset int) ([]ScanIndex, error) {
-	var results []ScanIndex
+	indexPath := filepath.Join(sm.dataPath, "index.json")
 
-	iter := sm.db.NewIterator(nil, nil)
-	defer iter.Release()
-
-	// Iterate through index entries
-	for iter.Next() {
-		key := string(iter.Key())
-		if !strings.HasPrefix(key, "index:") {
-			continue
+	// If index doesn't exist, create it
+	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+		if err := sm.updateIndex(); err != nil {
+			return nil, fmt.Errorf("failed to create index: %w", err)
 		}
-
-		var index ScanIndex
-		if err := json.Unmarshal(iter.Value(), &index); err != nil {
-			continue // Skip malformed entries
-		}
-
-		results = append(results, index)
 	}
 
-	// Sort by timestamp (newest first)
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Timestamp.After(results[j].Timestamp)
-	})
+	data, err := ioutil.ReadFile(indexPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read index file: %w", err)
+	}
+
+	var results []ScanIndex
+	if err := json.Unmarshal(data, &results); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal index: %w", err)
+	}
 
 	// Apply pagination
 	if offset >= len(results) {
@@ -168,50 +173,17 @@ func (sm *StorageManager) ListScanResults(limit int, offset int) ([]ScanIndex, e
 
 // DeleteScanResult removes a scan result from storage
 func (sm *StorageManager) DeleteScanResult(id string) error {
-	// Get the scan to find its timestamp for index deletion
-	result, err := sm.GetScanResult(id)
-	if err != nil {
-		return err
-	}
+	scanFile := filepath.Join(sm.dataPath, fmt.Sprintf("scan_%s.json", id))
 
-	// Delete main record
-	scanKey := fmt.Sprintf("scan:%s", id)
-	if err := sm.db.Delete([]byte(scanKey), nil); err != nil {
-		return fmt.Errorf("failed to delete scan result: %w", err)
-	}
-
-	// Delete index entry
-	indexKey := fmt.Sprintf("index:%d:%s", result.Timestamp.Unix(), id)
-	if err := sm.db.Delete([]byte(indexKey), nil); err != nil {
-		return fmt.Errorf("failed to delete scan index: %w", err)
-	}
-
-	return nil
-}
-
-// GetStorageStats returns statistics about the storage
-func (sm *StorageManager) GetStorageStats() (*StorageStats, error) {
-	stats := &StorageStats{}
-
-	iter := sm.db.NewIterator(nil, nil)
-	defer iter.Release()
-
-	var totalSize int64
-	scanCount := 0
-
-	for iter.Next() {
-		key := string(iter.Key())
-		if strings.HasPrefix(key, "scan:") {
-			scanCount++
-			totalSize += int64(len(iter.Value()))
+	if err := os.Remove(scanFile); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("scan result not found: %s", id)
 		}
+		return fmt.Errorf("failed to delete scan file: %w", err)
 	}
 
-	stats.TotalScans = scanCount
-	stats.TotalSize = totalSize
-	stats.DatabasePath = sm.dataPath
-
-	return stats, nil
+	// Update the index
+	return sm.updateIndex()
 }
 
 // StorageStats represents storage statistics
@@ -221,53 +193,63 @@ type StorageStats struct {
 	DatabasePath string `json:"database_path"`
 }
 
-// CompactDatabase optimizes the database by removing dead entries
+// GetStorageStats returns statistics about the storage
+func (sm *StorageManager) GetStorageStats() (*StorageStats, error) {
+	files, err := ioutil.ReadDir(sm.dataPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read data directory: %w", err)
+	}
+
+	var totalSize int64
+	scanCount := 0
+
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), "scan_") && strings.HasSuffix(file.Name(), ".json") {
+			scanCount++
+		}
+		totalSize += file.Size()
+	}
+
+	return &StorageStats{
+		TotalScans:   scanCount,
+		TotalSize:    totalSize,
+		DatabasePath: sm.dataPath,
+	}, nil
+}
+
+// CompactDatabase is a no-op for file-based storage but maintains interface compatibility
 func (sm *StorageManager) CompactDatabase() error {
-	// Trigger manual compaction for entire database
-	return sm.db.CompactRange(util.Range{})
+	// For file-based storage, we can clean up and rebuild the index
+	return sm.updateIndex()
 }
 
 // ExportData exports all scan data to a JSON file
 func (sm *StorageManager) ExportData(outputPath string) error {
-	var allScans []models.ScanResult
-
-	iter := sm.db.NewIterator(nil, nil)
-	defer iter.Release()
-
-	for iter.Next() {
-		key := string(iter.Key())
-		if !strings.HasPrefix(key, "scan:") {
-			continue
-		}
-
-		var result models.ScanResult
-		if err := json.Unmarshal(iter.Value(), &result); err != nil {
-			continue // Skip malformed entries
-		}
-
-		allScans = append(allScans, result)
+	indices, err := sm.ListScanResults(1000, 0) // Get all scans
+	if err != nil {
+		return fmt.Errorf("failed to list scans: %w", err)
 	}
 
-	// Sort by timestamp
-	sort.Slice(allScans, func(i, j int) bool {
-		return allScans[i].Timestamp.Before(allScans[j].Timestamp)
-	})
+	var allScans []models.ScanResult
+	for _, index := range indices {
+		result, err := sm.GetScanResult(index.ID)
+		if err != nil {
+			continue // Skip failed reads
+		}
+		allScans = append(allScans, *result)
+	}
 
 	data, err := json.MarshalIndent(allScans, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal export data: %w", err)
 	}
 
-	if err := os.WriteFile(outputPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write export file: %w", err)
-	}
-
-	return nil
+	return ioutil.WriteFile(outputPath, data, 0644)
 }
 
 // ImportData imports scan data from a JSON file
 func (sm *StorageManager) ImportData(inputPath string) error {
-	data, err := os.ReadFile(inputPath)
+	data, err := ioutil.ReadFile(inputPath)
 	if err != nil {
 		return fmt.Errorf("failed to read import file: %w", err)
 	}
@@ -277,43 +259,31 @@ func (sm *StorageManager) ImportData(inputPath string) error {
 		return fmt.Errorf("failed to unmarshal import data: %w", err)
 	}
 
-	// Save each scan
 	for _, scan := range scans {
 		if err := sm.SaveScanResult(&scan); err != nil {
-			return fmt.Errorf("failed to import scan %s: %w", scan.ID, err)
+			return fmt.Errorf("failed to save imported scan %s: %w", scan.ID, err)
 		}
 	}
 
 	return nil
 }
 
-// SearchScans searches for scans by URL pattern
+// SearchScans searches for scans matching a pattern
 func (sm *StorageManager) SearchScans(pattern string) ([]ScanIndex, error) {
-	var results []ScanIndex
+	indices, err := sm.ListScanResults(1000, 0) // Get all scans
+	if err != nil {
+		return nil, err
+	}
 
-	iter := sm.db.NewIterator(nil, nil)
-	defer iter.Release()
+	var matches []ScanIndex
+	pattern = strings.ToLower(pattern)
 
-	for iter.Next() {
-		key := string(iter.Key())
-		if !strings.HasPrefix(key, "index:") {
-			continue
-		}
-
-		var index ScanIndex
-		if err := json.Unmarshal(iter.Value(), &index); err != nil {
-			continue
-		}
-
-		if strings.Contains(strings.ToLower(index.URL), strings.ToLower(pattern)) {
-			results = append(results, index)
+	for _, index := range indices {
+		if strings.Contains(strings.ToLower(index.URL), pattern) ||
+			strings.Contains(strings.ToLower(index.ID), pattern) {
+			matches = append(matches, index)
 		}
 	}
 
-	// Sort by timestamp (newest first)
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Timestamp.After(results[j].Timestamp)
-	})
-
-	return results, nil
+	return matches, nil
 }
