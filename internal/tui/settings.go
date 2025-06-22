@@ -66,7 +66,6 @@ func NewSettingsModel() SettingsModel {
 	l := list.New(items, list.NewDefaultDelegate(), defaultWidth, 14)
 	l.Title = "⚙️  Settings"
 	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
 	l.Styles.Title = titleStyle
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle
@@ -105,14 +104,17 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					apiKeysModel := NewAPIKeysModel()
 					return apiKeysModel, apiKeysModel.Init()
 				case "theme":
-					// Show theme settings (placeholder)
-					return m, nil
+					// Show theme settings
+					themeModel := NewThemeSettingsModel()
+					return themeModel, themeModel.Init()
 				case "performance":
-					// Show performance settings (placeholder)
-					return m, nil
+					// Show performance settings
+					perfModel := NewPerformanceSettingsModel()
+					return perfModel, perfModel.Init()
 				case "export":
-					// Show export settings (placeholder)
-					return m, nil
+					// Show export settings
+					exportModel := NewExportSettingsModel()
+					return exportModel, exportModel.Init()
 				case "back":
 					return NewMainMenuModel(), nil
 				}
@@ -1084,3 +1086,472 @@ var (
 			Background(lipgloss.Color("#666")).
 			Padding(0, 3)
 )
+
+// ThemeSettingsModel represents the theme configuration screen
+type ThemeSettingsModel struct {
+	list         list.Model
+	width        int
+	height       int
+	currentTheme string
+}
+
+// ThemeOption represents a theme option
+type ThemeOption struct {
+	name        string
+	description string
+	colors      []string
+}
+
+func (i ThemeOption) Title() string       { return i.name }
+func (i ThemeOption) Description() string { return i.description }
+func (i ThemeOption) FilterValue() string { return i.name }
+
+// NewThemeSettingsModel creates a new theme settings model
+func NewThemeSettingsModel() ThemeSettingsModel {
+	items := []list.Item{
+		ThemeOption{
+			name:        "🌙 Dark (Default)",
+			description: "Dark theme with blue accents",
+			colors:      []string{"#1e1e2e", "#89b4fa", "#a6e3a1"},
+		},
+		ThemeOption{
+			name:        "☀️ Light",
+			description: "Light theme with clean appearance",
+			colors:      []string{"#eff1f5", "#1e66f5", "#40a02b"},
+		},
+		ThemeOption{
+			name:        "🌈 Colorful",
+			description: "Vibrant theme with rainbow accents",
+			colors:      []string{"#313244", "#f38ba8", "#fab387"},
+		},
+		ThemeOption{
+			name:        "💻 Terminal",
+			description: "Classic terminal green theme",
+			colors:      []string{"#000000", "#00ff00", "#ffffff"},
+		},
+		SettingsMenuItem{
+			title:  "🔙 Back",
+			desc:   "Return to settings",
+			action: "back",
+		},
+	}
+
+	l := list.New(items, list.NewDefaultDelegate(), 50, 14)
+	l.Title = "🎨 Theme Settings"
+	l.SetShowStatusBar(false)
+	l.Styles.Title = titleStyle
+	l.Styles.PaginationStyle = paginationStyle
+	l.Styles.HelpStyle = helpStyle
+
+	return ThemeSettingsModel{
+		list:         l,
+		currentTheme: "Dark (Default)",
+	}
+}
+
+// Init implements tea.Model
+func (m ThemeSettingsModel) Init() tea.Cmd {
+	return nil
+}
+
+// Update implements tea.Model
+func (m ThemeSettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.list.SetWidth(msg.Width)
+		m.list.SetHeight(msg.Height - 2)
+		return m, nil
+
+	case tea.KeyMsg:
+		switch keypress := msg.String(); keypress {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "esc":
+			return NewSettingsModel(), nil
+		case "enter":
+			selectedItem := m.list.SelectedItem()
+			if item, ok := selectedItem.(ThemeOption); ok {
+				m.currentTheme = item.name
+				// Here you would typically save the theme preference
+				// For now, we'll just update the current selection
+				return m, nil
+			}
+			if item, ok := selectedItem.(SettingsMenuItem); ok && item.action == "back" {
+				return NewSettingsModel(), nil
+			}
+		}
+	}
+
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd
+}
+
+// View implements tea.Model
+func (m ThemeSettingsModel) View() string {
+	header := headerStyle.Render("🎨 Theme Settings")
+
+	currentInfo := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#626262")).
+		Margin(1, 0).
+		Render(fmt.Sprintf("Current theme: %s", m.currentTheme))
+
+	listView := m.list.View()
+
+	help := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#626262")).
+		Margin(1, 0).
+		Render("Enter to select theme • ESC to go back • Ctrl+C to quit")
+
+	return lipgloss.JoinVertical(lipgloss.Left, header, currentInfo, listView, help)
+}
+
+// PerformanceSettingsModel represents the performance configuration screen
+type PerformanceSettingsModel struct {
+	list     list.Model
+	width    int
+	height   int
+	settings map[string]interface{}
+}
+
+// PerformanceOption represents a performance setting option
+type PerformanceOption struct {
+	name        string
+	description string
+	value       string
+	action      string
+}
+
+func (i PerformanceOption) Title() string       { return i.name }
+func (i PerformanceOption) Description() string { return i.description }
+func (i PerformanceOption) FilterValue() string { return i.name }
+
+// NewPerformanceSettingsModel creates a new performance settings model
+func NewPerformanceSettingsModel() PerformanceSettingsModel {
+	settings := map[string]interface{}{
+		"max_concurrency": 5,
+		"scan_timeout":    30,
+		"ai_timeout":      60,
+		"retry_attempts":  3,
+	}
+
+	items := []list.Item{
+		PerformanceOption{
+			name:        "🔄 Max Concurrency",
+			description: fmt.Sprintf("Maximum concurrent scanners: %d", settings["max_concurrency"]),
+			value:       "5",
+			action:      "concurrency",
+		},
+		PerformanceOption{
+			name:        "⏱️ Scan Timeout",
+			description: fmt.Sprintf("Scanner timeout in seconds: %d", settings["scan_timeout"]),
+			value:       "30",
+			action:      "timeout",
+		},
+		PerformanceOption{
+			name:        "🤖 AI Timeout",
+			description: fmt.Sprintf("AI analysis timeout in seconds: %d", settings["ai_timeout"]),
+			value:       "60",
+			action:      "ai_timeout",
+		},
+		PerformanceOption{
+			name:        "🔁 Retry Attempts",
+			description: fmt.Sprintf("Failed scan retry attempts: %d", settings["retry_attempts"]),
+			value:       "3",
+			action:      "retry",
+		},
+		SettingsMenuItem{
+			title:  "🔙 Back",
+			desc:   "Return to settings",
+			action: "back",
+		},
+	}
+
+	l := list.New(items, list.NewDefaultDelegate(), 50, 14)
+	l.Title = "⚡ Performance Settings"
+	l.SetShowStatusBar(false)
+	l.Styles.Title = titleStyle
+	l.Styles.PaginationStyle = paginationStyle
+	l.Styles.HelpStyle = helpStyle
+
+	return PerformanceSettingsModel{
+		list:     l,
+		settings: settings,
+	}
+}
+
+// Init implements tea.Model
+func (m PerformanceSettingsModel) Init() tea.Cmd {
+	return nil
+}
+
+// Update implements tea.Model
+func (m PerformanceSettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.list.SetWidth(msg.Width)
+		m.list.SetHeight(msg.Height - 2)
+		return m, nil
+
+	case tea.KeyMsg:
+		switch keypress := msg.String(); keypress {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "esc":
+			return NewSettingsModel(), nil
+		case "enter":
+			selectedItem := m.list.SelectedItem()
+			if item, ok := selectedItem.(PerformanceOption); ok {
+				// Here you would typically show an input field to modify the setting
+				// For now, we'll just cycle through some preset values
+				switch item.action {
+				case "concurrency":
+					current := m.settings["max_concurrency"].(int)
+					if current >= 10 {
+						m.settings["max_concurrency"] = 1
+					} else {
+						m.settings["max_concurrency"] = current + 1
+					}
+				case "timeout":
+					current := m.settings["scan_timeout"].(int)
+					if current >= 120 {
+						m.settings["scan_timeout"] = 10
+					} else {
+						m.settings["scan_timeout"] = current + 10
+					}
+				case "ai_timeout":
+					current := m.settings["ai_timeout"].(int)
+					if current >= 180 {
+						m.settings["ai_timeout"] = 30
+					} else {
+						m.settings["ai_timeout"] = current + 30
+					}
+				case "retry":
+					current := m.settings["retry_attempts"].(int)
+					if current >= 5 {
+						m.settings["retry_attempts"] = 1
+					} else {
+						m.settings["retry_attempts"] = current + 1
+					}
+				}
+				// Refresh the model with updated settings
+				return NewPerformanceSettingsModel(), nil
+			}
+			if item, ok := selectedItem.(SettingsMenuItem); ok && item.action == "back" {
+				return NewSettingsModel(), nil
+			}
+		}
+	}
+
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd
+}
+
+// View implements tea.Model
+func (m PerformanceSettingsModel) View() string {
+	header := headerStyle.Render("⚡ Performance Settings")
+
+	instructions := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#626262")).
+		Margin(1, 0).
+		Render("Configure scanning performance and timeout settings")
+
+	listView := m.list.View()
+
+	help := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#626262")).
+		Margin(1, 0).
+		Render("Enter to modify setting • ESC to go back • Ctrl+C to quit")
+
+	return lipgloss.JoinVertical(lipgloss.Left, header, instructions, listView, help)
+}
+
+// ExportSettingsModel represents the export configuration screen
+type ExportSettingsModel struct {
+	list     list.Model
+	width    int
+	height   int
+	settings map[string]interface{}
+}
+
+// ExportOption represents an export setting option
+type ExportOption struct {
+	name        string
+	description string
+	value       string
+	action      string
+}
+
+func (i ExportOption) Title() string       { return i.name }
+func (i ExportOption) Description() string { return i.description }
+func (i ExportOption) FilterValue() string { return i.name }
+
+// NewExportSettingsModel creates a new export settings model
+func NewExportSettingsModel() ExportSettingsModel {
+	settings := map[string]interface{}{
+		"default_format":   "JSON",
+		"include_raw_data": true,
+		"auto_export":      false,
+		"export_location":  "./reports/",
+		"company_name":     "Your Company",
+		"include_branding": true,
+	}
+
+	items := []list.Item{
+		ExportOption{
+			name:        "📄 Default Format",
+			description: fmt.Sprintf("Default export format: %s", settings["default_format"]),
+			value:       "JSON",
+			action:      "format",
+		},
+		ExportOption{
+			name:        "📊 Include Raw Data",
+			description: fmt.Sprintf("Include raw scan data: %v", settings["include_raw_data"]),
+			value:       "true",
+			action:      "raw_data",
+		},
+		ExportOption{
+			name:        "🔄 Auto Export",
+			description: fmt.Sprintf("Automatically export after scan: %v", settings["auto_export"]),
+			value:       "false",
+			action:      "auto_export",
+		},
+		ExportOption{
+			name:        "📁 Export Location",
+			description: fmt.Sprintf("Export directory: %s", settings["export_location"]),
+			value:       "./reports/",
+			action:      "location",
+		},
+		ExportOption{
+			name:        "🏢 Company Name",
+			description: fmt.Sprintf("Company branding: %s", settings["company_name"]),
+			value:       "Your Company",
+			action:      "company",
+		},
+		ExportOption{
+			name:        "🎨 Include Branding",
+			description: fmt.Sprintf("Include company branding: %v", settings["include_branding"]),
+			value:       "true",
+			action:      "branding",
+		},
+		SettingsMenuItem{
+			title:  "🔙 Back",
+			desc:   "Return to settings",
+			action: "back",
+		},
+	}
+
+	l := list.New(items, list.NewDefaultDelegate(), 50, 14)
+	l.Title = "📊 Export Settings"
+	l.SetShowStatusBar(false)
+	l.Styles.Title = titleStyle
+	l.Styles.PaginationStyle = paginationStyle
+	l.Styles.HelpStyle = helpStyle
+
+	return ExportSettingsModel{
+		list:     l,
+		settings: settings,
+	}
+}
+
+// Init implements tea.Model
+func (m ExportSettingsModel) Init() tea.Cmd {
+	return nil
+}
+
+// Update implements tea.Model
+func (m ExportSettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.list.SetWidth(msg.Width)
+		m.list.SetHeight(msg.Height - 2)
+		return m, nil
+
+	case tea.KeyMsg:
+		switch keypress := msg.String(); keypress {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "esc":
+			return NewSettingsModel(), nil
+		case "enter":
+			selectedItem := m.list.SelectedItem()
+			if item, ok := selectedItem.(ExportOption); ok {
+				// Toggle or cycle through values
+				switch item.action {
+				case "format":
+					current := m.settings["default_format"].(string)
+					if current == "JSON" {
+						m.settings["default_format"] = "TXT"
+					} else {
+						m.settings["default_format"] = "JSON"
+					}
+				case "raw_data":
+					m.settings["include_raw_data"] = !m.settings["include_raw_data"].(bool)
+				case "auto_export":
+					m.settings["auto_export"] = !m.settings["auto_export"].(bool)
+				case "branding":
+					m.settings["include_branding"] = !m.settings["include_branding"].(bool)
+				case "location":
+					// Would typically show a file picker or input field
+					// For now just cycle through common locations
+					current := m.settings["export_location"].(string)
+					switch current {
+					case "./reports/":
+						m.settings["export_location"] = "./exports/"
+					case "./exports/":
+						m.settings["export_location"] = "~/Documents/harbinger/"
+					default:
+						m.settings["export_location"] = "./reports/"
+					}
+				case "company":
+					// Would typically show an input field
+					// For now just cycle through example names
+					current := m.settings["company_name"].(string)
+					switch current {
+					case "Your Company":
+						m.settings["company_name"] = "Security Corp"
+					case "Security Corp":
+						m.settings["company_name"] = "TechSec Ltd"
+					default:
+						m.settings["company_name"] = "Your Company"
+					}
+				}
+				// Refresh the model with updated settings
+				return NewExportSettingsModel(), nil
+			}
+			if item, ok := selectedItem.(SettingsMenuItem); ok && item.action == "back" {
+				return NewSettingsModel(), nil
+			}
+		}
+	}
+
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd
+}
+
+// View implements tea.Model
+func (m ExportSettingsModel) View() string {
+	header := headerStyle.Render("📊 Export Settings")
+
+	instructions := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#626262")).
+		Margin(1, 0).
+		Render("Configure report export preferences and formats")
+
+	listView := m.list.View()
+
+	help := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#626262")).
+		Margin(1, 0).
+		Render("Enter to modify setting • ESC to go back • Ctrl+C to quit")
+
+	return lipgloss.JoinVertical(lipgloss.Left, header, instructions, listView, help)
+}
